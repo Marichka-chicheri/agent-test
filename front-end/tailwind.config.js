@@ -5,7 +5,12 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        sans: ['Frutiger', 'ui-sans-serif', 'system-ui'],
+        frutiger: ['Frutiger', 'sans-serif'],
+      },
+    },
   },
   plugins: [],
 }
