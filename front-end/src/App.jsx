@@ -4,7 +4,7 @@ import { Register } from './pages/Register'
 
 
 function App() {
-  return <Register /> // swap to <CreateAgent /> to test builder
+  return <LiveView />
 }
 
 export default App
