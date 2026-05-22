@@ -1,6 +1,4 @@
-import os
-import asyncio
-import inspect
+import os, json, asyncio, inspect
 from typing import Dict, Any
 
 from dotenv import load_dotenv
@@ -9,7 +7,6 @@ from google.genai import types
 
 from tools import TOOLS, TOOL_DECLARATIONS
 from logger import init_db, create_run, add_step, finish_run
-
 
 init_db()
 load_dotenv()
@@ -26,6 +23,18 @@ EMAIL_USERNAME = os.getenv("EMAIL_USERNAME", "").strip()
 IMAP_HOST = os.getenv("IMAP_HOST", "imap.gmail.com").strip()
 
 SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "1")#ДОПИСАТИ СИСТЕМНИЙ ПРОМПТ ЗА ЗАМОВЧЕННЯМ
+
+def emit(run_id: str, step: int, event_type: str, data: Dict[str, Any]):
+    event = {
+        "run_id": run_id,
+        "step": step,
+        "type": event_type,
+        "data": data
+    }
+
+    print(json.dumps(event, ensure_ascii=False), flush=True) #тут може бути відправка на фронт (ТАК ЗВАНЕ ТЦК)
+
+    return event
 
 def execute_tool(name: str, args: Dict[str, Any]):
     if name not in TOOLS:
@@ -101,12 +110,15 @@ def run_agent(prompt: str):
             tool_called = False
 
             for part in candidate.content.parts:
-                print("ITER " + str(step) + ": ")
-                # ---------------- TEXT OUTPUT ----------------
+
+                # ---------------- TEXT ----------------
                 if part.text:
-                    print("\nGemini:", part.text)
                     add_step(run_id, {
                         "type": "thought",
+                        "content": part.text
+                    })
+
+                    emit(run_id, step, "thought", {
                         "content": part.text
                     })
 
@@ -116,22 +128,28 @@ def run_agent(prompt: str):
 
                     tool_name = part.function_call.name
                     raw_args = dict(part.function_call.args or {})
-
                     args = prepare_tool_args(tool_name, raw_args)
 
-                    print(f"\nTool: {tool_name}")
                     add_step(run_id, {
                         "type": "tool_call",
                         "tool": tool_name,
                         "args": raw_args
                     })
 
-                    result = execute_tool(tool_name, args)
+                    emit(run_id, step, "tool_call", {
+                        "tool": tool_name,
+                        "args": raw_args
+                    })
 
-                    print("Observation:", result)
+                    result = execute_tool(tool_name, args)
 
                     add_step(run_id, {
                         "type": "observation",
+                        "tool": tool_name,
+                        "result": result
+                    })
+
+                    emit(run_id, step, "observation", {
                         "tool": tool_name,
                         "result": result
                     })
@@ -151,19 +169,34 @@ def run_agent(prompt: str):
                         )
                     )
 
-            # ---------------- STOP CONDITION ----------------
+            # ---------------- STOP ----------------
             if not tool_called:
                 final_text = response.text
+
                 finish_run(run_id, final_text, "done")
+
+                emit(run_id, step, "final", {
+                    "content": final_text
+                })
+
                 return final_text
 
         finish_run(run_id, "Iteration limit reached", "error")
+
+        emit(run_id, MAX_ITER, "error", {
+            "message": "Iteration limit reached"
+        })
+
         return "Iteration limit reached"
 
     except Exception as e:
         finish_run(run_id, str(e), "error")
-        raise
 
+        emit(run_id, step, "error", {
+            "message": str(e)
+        })
+
+        raise
 
 
 if __name__ == "__main__":

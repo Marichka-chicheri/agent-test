@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 from docx import Document
-import fitz  # PyMuPDF
+import fitz
 
 
 def read_pdf(path: str) -> str:
