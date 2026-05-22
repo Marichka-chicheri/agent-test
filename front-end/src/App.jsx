@@ -1,11 +1,9 @@
-import CreateAgent from './pages/CreateAgent';
+import { LiveView } from './pages/LiveView'
+import CreateAgent from './pages/CreateAgent'
 
 function App() {
-  return (
-    <div className="App">
-      <CreateAgent />
-    </div>
-  );
+  return <LiveView /> // swap to <CreateAgent /> to test builder
 }
 
-export default App;
+export default App
+
