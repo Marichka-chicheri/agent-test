@@ -45,6 +45,37 @@ Do not hallucinate tool outputs.
 """
 
 
+# --- ТИМЧАСОВИЙ БУТСТРАП ДЛЯ ЛОКАЛЬНОГО ТЕСТУ ---
+def local_bootstrap_tokens():
+    import os
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    SCOPES = ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/calendar.readonly']
+
+    if os.path.exists('token.json'):
+        import json
+        with open('token.json', 'r') as f:
+            return json.load(f)
+
+    # Якщо токена немає, запускаємо локальний сервер для авторизації твого особистого акаунту
+    flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+    creds = flow.run_local_server(port=0)
+
+    with open('token.json', 'w') as token_file:
+        token_file.write(creds.to_json())
+
+    import json
+    with open('token.json', 'r') as f:
+        return json.load(f)
+
+
+# Перехоплюємо твої токени
+try:
+    TEST_USER_TOKENS = local_bootstrap_tokens()
+except Exception as e:
+    print(f"Помилка ініціалізації OAuth: {e}")
+    TEST_USER_TOKENS = {}
+
+
 def execute_tool(
     name: str,
     args: Dict
