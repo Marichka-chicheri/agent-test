@@ -8,8 +8,9 @@ from tools import TOOLS, TOOL_DECLARATIONS
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from logger import init_db, create_run, add_step, finish_run
 
-
+init_db()
 
 load_dotenv()
 
@@ -75,128 +76,186 @@ def execute_tool(
         }
 
 
+MAX_ITER = 15
+
 def run_agent(prompt):
+    run_id = create_run(prompt)
+    history = [types.Content(
+        role="user",
+        parts=[types.Part(text=prompt)]
+    )]
 
-    history = [
-
-        types.Content(
-            role="user",
-            parts=[
-                types.Part(
-                    text=prompt
-                )
-            ]
-        )
-
-    ]
-
-    MAX_ITER = 15
-
-    for step in range(MAX_ITER):
-
-        print(
-            f"\n=== ITER {step+1} ==="
-        )
-
-        response = client.models.generate_content(
-
-            model=MODEL,
-
-            contents=history,
-
-            config=types.GenerateContentConfig(
-
+    try:
+        for step in range(MAX_ITER):
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=history,
+                config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
-
-                tools=[
-                    types.Tool(
-                        function_declarations=
-                        TOOL_DECLARATIONS
-                    )
-                ]
-
+                tools=[types.Tool(function_declarations=TOOL_DECLARATIONS)]
+                )
             )
+            candidate = response.candidates[0]
+            history.append(candidate.content)
+            tool_called = False
 
-        )
+            for part in candidate.content.parts:
+                if part.text:
+                    print("\nGemini:", part.text)
+                    add_step(run_id, {"type": "thought", "content": part.text})
 
-        candidate = response.candidates[0]
+                if part.function_call:
+                    tool_called = True
+                    tool_name = part.function_call.name
+                    args = dict(part.function_call.args)
+                    print(f"\nTool: {tool_name}")
+                    add_step(run_id, {"type": "tool_call", "tool": tool_name, "args": args})
 
-        history.append(
-            candidate.content
-        )
+                    result = execute_tool(tool_name, args)
+                    print("Observation:", result)
+                    add_step(run_id, {"type": "observation", "tool": tool_name, "result": str(result)})
 
-        tool_called = False
-
-        for part in candidate.content.parts:
-
-            if part.text:
-
-                print(
-                    "\nGemini:"
-                )
-
-                print(
-                    part.text
-                )
-
-            if part.function_call:
-
-                tool_called = True
-
-                tool_name = (
-                    part.function_call.name
-                )
-
-                args = dict(
-                    part.function_call.args
-                )
-
-                print(
-                    f"\nTool: {tool_name}"
-                )
-
-                result = execute_tool(
-                    tool_name,
-                    args
-                )
-
-                print(
-                    "Observation:"
-                )
-
-                print(result)
-
-                history.append(
-
-                    types.Content(
-
+                    history.append(types.Content(
                         role="tool",
+                        parts=[types.Part(function_response=types.FunctionResponse(
+                            name=tool_name,
+                            response={"data": result}
+                        ))]
+                    ))
 
-                        parts=[
+            if not tool_called:
+                finish_run(run_id, response.text, "done")
+                return response.text
 
-                            types.Part(
-                                function_response=
-                                types.FunctionResponse(
+        finish_run(run_id, "Iteration limit reached", "error")
+        return "Iteration limit reached"
 
-                                    name=tool_name,
+    except Exception as e:
+        finish_run(run_id, str(e), "error")
+        raise
 
-                                    response={"data": result}
-                                )
-                            )
 
-                        ]
+    # history = [
+    #
+    #     types.Content(
+    #         role="user",
+    #         parts=[
+    #             types.Part(
+    #                 text=prompt
+    #             )
+    #         ]
+    #     )
+    #
+    # ]
+    #
+    # MAX_ITER = 15
+    #
+    # for step in range(MAX_ITER):
+    #
+    #     print(
+    #         f"\n=== ITER {step+1} ==="
+    #     )
+    #
+    #     response = client.models.generate_content(
+    #
+    #         model=MODEL,
+    #
+    #         contents=history,
+    #
+    #         config=types.GenerateContentConfig(
+    #
+    #             system_instruction=SYSTEM_PROMPT,
+    #
+    #             tools=[
+    #                 types.Tool(
+    #                     function_declarations=
+    #                     TOOL_DECLARATIONS
+    #                 )
+    #             ]
+    #
+    #         )
+    #
+    #     )
+    #
+    #     candidate = response.candidates[0]
+    #
+    #     history.append(
+    #         candidate.content
+    #     )
+    #
+    #     tool_called = False
+    #
+    #     for part in candidate.content.parts:
+    #
+    #         if part.text:
+    #
+    #             print(
+    #                 "\nGemini:"
+    #             )
+    #
+    #             print(
+    #                 part.text
+    #             )
+    #
+    #         if part.function_call:
+    #
+    #             tool_called = True
+    #
+    #             tool_name = (
+    #                 part.function_call.name
+    #             )
+    #
+    #             args = dict(
+    #                 part.function_call.args
+    #             )
+    #
+    #             print(
+    #                 f"\nTool: {tool_name}"
+    #             )
+    #
+    #             result = execute_tool(
+    #                 tool_name,
+    #                 args
+    #             )
+    #
+    #             print(
+    #                 "Observation:"
+    #             )
+    #
+    #             print(result)
+    #
+    #             history.append(
+    #
+    #                 types.Content(
+    #
+    #                     role="tool",
+    #
+    #                     parts=[
+    #
+    #                         types.Part(
+    #                             function_response=
+    #                             types.FunctionResponse(
+    #
+    #                                 name=tool_name,
+    #
+    #                                 response={"data": result}
+    #                             )
+    #                         )
+    #
+    #                     ]
+    #
+    #                 )
+    #
+    #             )
+    #
+    #     if not tool_called:
+    #
+    #         return response.text
+    #
+    # return (
+    #     "Iteration limit reached"
+    # )
 
-                    )
-
-                )
-
-        if not tool_called:
-
-            return response.text
-
-    return (
-        "Iteration limit reached"
-    )
 
 
 answer = run_agent("""
