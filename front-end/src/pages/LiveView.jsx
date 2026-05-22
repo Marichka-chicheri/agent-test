@@ -1,23 +1,23 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getAgents } from '../api/agents'
-import { logout } from '../api/api'
 import { AppNav } from '../components/AppNav'
+import { ProfileMenu } from '../components/ProfileMenu'
+import { useAuth } from '../hooks/useAuth'
 import { useEventStream } from '../hooks/useEventStream'
 import { EventCard, ThinkingCard } from '../components/EventCard'
 
 export function LiveView() {
   const navigate = useNavigate()
+  const { apiKeys } = useAuth()
   const [message, setMessage] = useState('')
   const [sentMessage, setSentMessage] = useState('')
   const [agents, setAgents] = useState([])
   const [agentsLoading, setAgentsLoading] = useState(true)
   const [agentsError, setAgentsError] = useState('')
   const [activeAgent, setActiveAgent] = useState(null)
-  const { events, status, step, run, reset } = useEventStream()
+  const { events, status, step, error, run, reset } = useEventStream()
   const feedRef = useRef(null)
-  const [showProfileMenu, setShowProfileMenu] = useState(false)
-
   useEffect(() => {
     let cancelled = false
 
@@ -71,11 +71,6 @@ export function LiveView() {
     reset()
   }
 
-  function handleLogout() {
-    logout()
-    navigate('/login', { replace: true })
-  }
-
   return (
     <div style={styles.root}>
 
@@ -92,26 +87,23 @@ export function LiveView() {
           {status === 'done' && (
             <span style={styles.statusDone}>Done in {step} steps</span>
           )}
+          {status === 'error' && (
+            <span style={styles.statusError}>Run failed</span>
+          )}
 
-          {/* Профіль з поп-апом */}
-          <div style={{ position: 'relative' }}>
-            <div
-              style={styles.profileBar}
-              onClick={() => setShowProfileMenu(!showProfileMenu)}
-            >
-              Profile
-            </div>
-
-            {showProfileMenu && (
-              <div style={styles.popup}>
-                <div style={styles.popupItem} onClick={handleLogout}>
-                  Вийти
-                </div>
-              </div>
-            )}
-          </div>
+          <ProfileMenu />
         </div>
       </div>
+
+      {!apiKeys.gemini_configured && (
+        <div style={styles.warnBanner}>
+          Add your Gemini API key in{" "}
+          <span style={styles.warnLink} onClick={() => navigate("/settings")}>
+            Settings
+          </span>{" "}
+          to run agents.
+        </div>
+      )}
 
       {/* BODY */}
       <div style={styles.body}>
@@ -184,6 +176,9 @@ export function LiveView() {
               <EventCard key={i} event={event} />
             ))}
             {status === 'running' && <ThinkingCard />}
+            {status === 'error' && error && (
+              <div style={styles.errorBanner}>{error}</div>
+            )}
           </div>
 
           {/* Input Area */}
@@ -247,46 +242,30 @@ const styles = {
     border: '1px solid rgba(255,255,255,0.2)',
     borderRadius: 12, padding: '7px 16px',
   },
-  profileBar: {
-    background: 'rgba(255,255,255,0.15)',
-    backdropFilter: 'blur(8px)',
-    border: '1px solid rgba(255,255,255,0.2)',
-    borderRadius: 20, padding: '6px 14px',
-    fontSize: 12, fontWeight: 700,
-    color: '#fff', cursor: 'pointer',
-    userSelect: 'none',
-  },
-
-  // Стилі для Поп-апу
-  popup: {
-    position: 'absolute',
-    top: 'calc(100% + 10px)',
-    right: 0,
-    background: 'rgba(25, 45, 60, 0.85)',
-    backdropFilter: 'blur(12px)',
-    border: '1px solid rgba(255,255,255,0.2)',
-    borderRadius: 12,
-    padding: '6px',
-    minWidth: '130px',
-    zIndex: 1000,
-    boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
-  },
-  popupItem: {
+  warnBanner: {
+    fontSize: 13,
     padding: '8px 12px',
-    borderRadius: 8,
-    fontSize: 12,
-    fontWeight: 600,
-    color: '#ff8080',
-    cursor: 'pointer',
-    transition: 'background 0.2s',
-    display: 'flex',
-    alignItems: 'center',
-    background: 'rgba(255,255,255,0.05)',
+    borderRadius: 10,
+    background: 'rgba(255,180,50,0.15)',
+    border: '1px solid rgba(255,200,80,0.35)',
+    flexShrink: 0,
   },
-
-  // Всі інші стилі без змін
+  warnLink: {
+    textDecoration: 'underline',
+    cursor: 'pointer',
+    fontWeight: 700,
+  },
   statusRunning: { fontSize: 12, color: '#fff', background: 'rgba(255,255,255,0.15)', padding: '5px 14px', borderRadius: 20, backdropFilter: 'blur(8px)' },
   statusDone: { fontSize: 12, color: '#fff', background: 'rgba(255,255,255,0.15)', padding: '5px 14px', borderRadius: 20 },
+  statusError: { fontSize: 12, color: '#ffb4b4', background: 'rgba(255,80,80,0.2)', padding: '5px 14px', borderRadius: 20 },
+  errorBanner: {
+    fontSize: 13,
+    color: '#ffb4b4',
+    background: 'rgba(255,80,80,0.15)',
+    border: '1px solid rgba(255,120,120,0.35)',
+    borderRadius: 10,
+    padding: '10px 12px',
+  },
   body: { display: 'flex', flex: 1, gap: 10, overflow: 'hidden' },
   sidebar: {
     width: 180, flexShrink: 0, background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)',

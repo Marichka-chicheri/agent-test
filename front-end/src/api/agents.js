@@ -1,28 +1,34 @@
 import { authFetch } from "./api"
+import { parseJsonResponse, withRetry } from "./http"
 
 export async function createAgent(data) {
-  const res = await authFetch("/agents/", {
-    method: "POST",
-    body: JSON.stringify(data),
+  return withRetry(async () => {
+    const res = await authFetch("/agents/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+    return parseJsonResponse(res)
   })
-
-  const result = await res.json()
-
-  if (!res.ok) {
-    throw new Error(JSON.stringify(result))
-  }
-
-  return result
 }
 
 export async function getAgents() {
-  const res = await authFetch("/agents/")
+  return withRetry(async () => {
+    const res = await authFetch("/agents/")
+    return parseJsonResponse(res)
+  })
+}
 
-  const result = await res.json()
+export async function startAgentRun(agentId, message) {
+  return withRetry(async () => {
+    const res = await authFetch(`/agents/${agentId}/run/`, {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    })
+    return parseJsonResponse(res)
+  }, { retries: 1 })
+}
 
-  if (!res.ok) {
-    throw new Error("Failed to load agents")
-  }
-
-  return result
+export async function getAgentRun(runId) {
+  const res = await authFetch(`/runs/${runId}/`)
+  return parseJsonResponse(res)
 }

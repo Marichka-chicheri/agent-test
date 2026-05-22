@@ -19,11 +19,18 @@ const STYLES = {
     bg: 'rgba(60,30,0,0.5)', border: 'rgba(255,180,50,0.4)',
     label: '#fcd34d', text: '#fef3c7', labelText: 'Max Steps Reached',
   },
+  error: {
+    bg: 'rgba(80,20,20,0.55)', border: 'rgba(255,100,100,0.45)',
+    label: '#fca5a5', text: '#fee2e2', labelText: 'Error',
+  },
 }
 
 export function EventCard({ event }) {
   const s = STYLES[event.type] || STYLES.thought
-  const body = event.content || event.input || event.result || ''
+  const body =
+    event.content ||
+    event.input ||
+    (event.result != null ? String(event.result) : '')
 
   return (
     <div style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 12, padding: '12px 16px', backdropFilter: 'blur(10px)' }}>

@@ -1,14 +1,16 @@
-import { setTokens } from "./api"
 import { API_URL } from "./config"
+import { applyAuthPayload } from "./api"
+import { formatApiError } from "./errors"
 
-export function formatApiError(data) {
-  if (!data || typeof data !== "object") return "Request failed"
-  if (data.error) return data.error
-  const parts = Object.entries(data).map(([key, value]) => {
-    const msg = Array.isArray(value) ? value.join(", ") : String(value)
-    return `${key}: ${msg}`
-  })
-  return parts.join("; ") || "Request failed"
+export { formatApiError }
+
+async function parseAuthResponse(res) {
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(formatApiError(data))
+  }
+  applyAuthPayload(data)
+  return data
 }
 
 export async function login({ username, password }) {
@@ -17,15 +19,7 @@ export async function login({ username, password }) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
   })
-
-  const data = await res.json()
-
-  if (!res.ok) {
-    throw new Error(formatApiError(data))
-  }
-
-  setTokens(data)
-  return data
+  return parseAuthResponse(res)
 }
 
 export async function register({ username, password }) {
@@ -34,13 +28,5 @@ export async function register({ username, password }) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
   })
-
-  const data = await res.json()
-
-  if (!res.ok) {
-    throw new Error(formatApiError(data))
-  }
-
-  setTokens(data)
-  return data
+  return parseAuthResponse(res)
 }
