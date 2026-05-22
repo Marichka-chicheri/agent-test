@@ -1,11 +1,15 @@
 import os
 import json
 import subprocess
+import asyncio
+import inspect
 from typing import Dict
-
+from tools import TOOLS, TOOL_DECLARATIONS
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+
+
 
 load_dotenv()
 
@@ -20,94 +24,7 @@ client = genai.Client(
     api_key=API_KEY
 )
 
-MODEL = "gemini-2.5-flash"
-
-def web_search(query: str):
-    #це заглушка, це не працює
-    return {
-        "results": [
-            f"Fake search result: {query}"
-        ]
-    }
-
-
-def run_python(code: str):
-
-    try:
-
-        result = subprocess.run(
-            ["python", "-c", code],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-
-        return {
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "exit_code": result.returncode
-        }
-
-    except Exception as e:
-
-        return {
-            "error": str(e)
-        }
-
-
-TOOLS = {
-
-    "web_search": web_search,
-    "run_python": run_python
-
-}
-
-
-tool_declarations = [
-
-    types.FunctionDeclaration(
-        name="web_search",
-
-        description="Search the web",
-
-        parameters={
-            "type": "OBJECT",
-
-            "properties": {
-
-                "query": {
-                    "type": "STRING"
-                }
-
-            },
-
-            "required": ["query"]
-
-        }
-    ),
-
-    types.FunctionDeclaration(
-        name="run_python",
-
-        description="Run python code",
-
-        parameters={
-            "type": "OBJECT",
-
-            "properties": {
-
-                "code": {
-                    "type": "STRING"
-                }
-
-            },
-
-            "required": ["code"]
-
-        }
-    )
-
-]
+MODEL = os.getenv("GEMINI_MODEL")
 
 
 SYSTEM_PROMPT = """
@@ -136,13 +53,20 @@ def execute_tool(
     if name not in TOOLS:
 
         return {
-            "error":
-            f"Unknown tool {name}"
+            "error": f"Unknown tool {name}"
         }
+
+    tool = TOOLS[name]
 
     try:
 
-        return TOOLS[name](**args)
+        if inspect.iscoroutinefunction(tool):
+
+            return asyncio.run(
+                tool(**args)
+            )
+
+        return tool(**args)
 
     except Exception as e:
 
@@ -187,7 +111,7 @@ def run_agent(prompt):
                 tools=[
                     types.Tool(
                         function_declarations=
-                        tool_declarations
+                        TOOL_DECLARATIONS
                     )
                 ]
 
@@ -256,8 +180,7 @@ def run_agent(prompt):
 
                                     name=tool_name,
 
-                                    response=result
-
+                                    response={"data": result}
                                 )
                             )
 
