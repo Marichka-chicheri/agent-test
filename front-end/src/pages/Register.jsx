@@ -3,10 +3,9 @@ import { useState } from 'react'
 export function Register() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [username, setUsername] = useState('') // Додав нікнейм, бо він зазвичай потрібен для агента
 
   function handleRegister() {
-    console.log('Registering with:', { email, username, password })
+    console.log('Registering with:', { email, password })
     // Тут буде виклик вашого API
   }
 
@@ -74,7 +73,7 @@ const styles = {
   root: {
     padding: '40px 16px',
     minHeight: '100vh', justifyContent: 'center',
-    display: 'flex', flexDirection: 'column', height: '100vh',
+    display: 'flex', flexDirection: 'column',
     background: 'linear-gradient(160deg, #5ececa 0%, #3a9fbf 40%, #1a6080 100%)',
     color: '#fff',
     fontFamily: 'Frutiger, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
