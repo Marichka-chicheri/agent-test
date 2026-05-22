@@ -1,7 +1,5 @@
 import { useState } from 'react'
 
-const MODELS = ['Claude 3.5 Sonnet', 'GPT-4o', 'Llama 3.1']
-
 const CreateAgent = () => {
   const [config, setConfig] = useState({
     name: '',
