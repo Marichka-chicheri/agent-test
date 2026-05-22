@@ -1,24 +1,49 @@
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { getAgents } from '../api/agents'
+import { logout } from '../api/api'
+import { AppNav } from '../components/AppNav'
 import { useEventStream } from '../hooks/useEventStream'
 import { EventCard, ThinkingCard } from '../components/EventCard'
 
-const AGENT_ID = 1 // replace with real ID once backend is ready
-
-const MOCK_AGENTS = [
-  { id: 1, name: 'Research Assistant', active: true },
-  { id: 2, name: 'Customer Support', active: false },
-  { id: 3, name: 'Data Analyst', active: false },
-]
-
 export function LiveView() {
+  const navigate = useNavigate()
   const [message, setMessage] = useState('')
   const [sentMessage, setSentMessage] = useState('')
-  const [activeAgent, setActiveAgent] = useState(MOCK_AGENTS[0])
+  const [agents, setAgents] = useState([])
+  const [agentsLoading, setAgentsLoading] = useState(true)
+  const [agentsError, setAgentsError] = useState('')
+  const [activeAgent, setActiveAgent] = useState(null)
   const { events, status, step, run, reset } = useEventStream()
   const feedRef = useRef(null)
-
-  // Стан для поп-апу профілю
   const [showProfileMenu, setShowProfileMenu] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadAgents() {
+      try {
+        setAgentsLoading(true)
+        setAgentsError('')
+        const list = await getAgents()
+        if (cancelled) return
+        setAgents(list)
+        setActiveAgent((prev) => {
+          if (prev && list.some((a) => a.id === prev.id)) return prev
+          return list[0] ?? null
+        })
+      } catch (err) {
+        if (!cancelled) {
+          setAgentsError(err.message || 'Failed to load agents')
+        }
+      } finally {
+        if (!cancelled) setAgentsLoading(false)
+      }
+    }
+
+    loadAgents()
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     if (feedRef.current) {
@@ -27,9 +52,9 @@ export function LiveView() {
   }, [events])
 
   function handleRun() {
-    if (!message.trim() || status === 'running') return
+    if (!message.trim() || status === 'running' || !activeAgent) return
     setSentMessage(message)
-    run(AGENT_ID, message)
+    run(activeAgent.id, message)
     setMessage('')
   }
 
@@ -47,8 +72,8 @@ export function LiveView() {
   }
 
   function handleLogout() {
-    console.log('Logging out...')
-    // Додай тут логіку виходу, наприклад: window.location.href = '/login'
+    logout()
+    navigate('/login', { replace: true })
   }
 
   return (
@@ -60,6 +85,7 @@ export function LiveView() {
           Agentic<span style={{ color: '#b3f0ff' }}>Studio</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <AppNav />
           {status === 'running' && (
             <span style={styles.statusRunning}>Step {step} · running...</span>
           )}
@@ -73,7 +99,7 @@ export function LiveView() {
               style={styles.profileBar}
               onClick={() => setShowProfileMenu(!showProfileMenu)}
             >
-              Mary Fedorenko
+              Profile
             </div>
 
             {showProfileMenu && (
@@ -93,17 +119,28 @@ export function LiveView() {
         {/* SIDEBAR */}
         <div style={styles.sidebar}>
           <div style={styles.sidebarLabel}>My Agents</div>
+          {agentsLoading && (
+            <div style={styles.sidebarHint}>Loading agents...</div>
+          )}
+          {agentsError && (
+            <div style={styles.sidebarError}>{agentsError}</div>
+          )}
+          {!agentsLoading && agents.length === 0 && (
+            <div style={styles.sidebarHint}>
+              No agents yet. Create one to get started.
+            </div>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {MOCK_AGENTS.map(agent => (
+            {agents.map(agent => (
               <div
                 key={agent.id}
                 onClick={() => handleAgentSwitch(agent)}
                 style={{
                   ...styles.agentItem,
-                  background: activeAgent.id === agent.id
+                  background: activeAgent?.id === agent.id
                     ? 'rgba(255,255,255,0.28)'
                     : 'rgba(0,0,0,0.2)',
-                  border: activeAgent.id === agent.id
+                  border: activeAgent?.id === agent.id
                     ? '1px solid rgba(255,255,255,0.5)'
                     : '1px solid rgba(255,255,255,0.15)',
                 }}
@@ -116,7 +153,12 @@ export function LiveView() {
             ))}
           </div>
 
-          <div style={styles.newAgentBtn}>+ New Agent</div>
+          <div
+            style={styles.newAgentBtn}
+            onClick={() => navigate('/constructor')}
+          >
+            + New Agent
+          </div>
         </div>
 
         {/* MAIN CONTENT */}
@@ -125,8 +167,14 @@ export function LiveView() {
           <div ref={feedRef} style={styles.feed}>
             {events.length === 0 && status === 'idle' && (
               <div style={styles.emptyState}>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>{activeAgent.name}</div>
-                <div>Ask your agent something to get started</div>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  {activeAgent?.name ?? 'No agent selected'}
+                </div>
+                <div>
+                  {activeAgent
+                    ? 'Ask your agent something to get started'
+                    : 'Create an agent in the constructor first'}
+                </div>
               </div>
             )}
             {sentMessage && (
@@ -144,8 +192,12 @@ export function LiveView() {
               value={message}
               onChange={e => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={`Ask ${activeAgent.name} something...`}
-              disabled={status === 'running'}
+              placeholder={
+                activeAgent
+                  ? `Ask ${activeAgent.name} something...`
+                  : 'Select or create an agent...'
+              }
+              disabled={status === 'running' || !activeAgent}
               style={{
                 ...styles.input,
                 opacity: status === 'running' ? 0.5 : 1,
@@ -156,13 +208,13 @@ export function LiveView() {
             )}
             <button
               onClick={handleRun}
-              disabled={status === 'running' || !message.trim()}
+              disabled={status === 'running' || !message.trim() || !activeAgent}
               style={{
                 ...styles.runBtn,
-                background: status === 'running' || !message.trim()
+                background: status === 'running' || !message.trim() || !activeAgent
                   ? 'rgba(255,255,255,0.1)'
                   : 'rgba(255,255,255,0.25)',
-                cursor: status === 'running' || !message.trim() ? 'not-allowed' : 'pointer',
+                cursor: status === 'running' || !message.trim() || !activeAgent ? 'not-allowed' : 'pointer',
               }}
             >
               {status === 'running' ? 'Running...' : 'Run'}
@@ -241,6 +293,8 @@ const styles = {
     borderRadius: 16, border: '1px solid rgba(255,255,255,0.15)', padding: 12, display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto',
   },
   sidebarLabel: { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'rgba(255,255,255,0.8)', paddingBottom: 4, borderBottom: '1px solid rgba(255,255,255,0.08)' },
+  sidebarHint: { fontSize: 12, color: 'rgba(255,255,255,0.55)', padding: '4px 2px' },
+  sidebarError: { fontSize: 12, color: '#ffb4b4', padding: '4px 2px' },
   agentItem: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 10, cursor: 'pointer', transition: 'all 0.15s' },
   agentDot: { width: 6, height: 6, borderRadius: '50%', background: '#6ee7b7', flexShrink: 0 },
   agentName: { fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.9)' },
