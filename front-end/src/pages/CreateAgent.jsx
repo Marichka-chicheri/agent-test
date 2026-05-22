@@ -1,12 +1,9 @@
 import { useState } from 'react'
 
-const MODELS = ['Claude 3.5 Sonnet', 'GPT-4o', 'Llama 3.1']
-
 const CreateAgent = () => {
   const [config, setConfig] = useState({
     name: '',
     instructions: '',
-    model: 'Claude 3.5 Sonnet',
     maxSteps: 10,
     forbiddenTopics: '',
   })
@@ -54,33 +51,6 @@ const CreateAgent = () => {
               rows={7}
               style={styles.textarea}
             />
-          </div>
-
-          {/* Model */}
-          <div style={styles.section}>
-            <label style={styles.label}>Model</label>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {MODELS.map(model => (
-                <div
-                  key={model}
-                  onClick={() => setConfig({ ...config, model })}
-                  style={{
-                    ...styles.modelChip,
-                    background: config.model === model
-                      ? 'rgba(255,255,255,0.25)'
-                      : 'rgba(0,0,0,0.2)',
-                    border: config.model === model
-                      ? '1px solid rgba(255,255,255,0.5)'
-                      : '1px solid rgba(255,255,255,0.12)',
-                    color: config.model === model
-                      ? '#fff'
-                      : 'rgba(255,255,255,0.5)',
-                  }}
-                >
-                  {model}
-                </div>
-              ))}
-            </div>
           </div>
 
           {/* Max Iterations */}
