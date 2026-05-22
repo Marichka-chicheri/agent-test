@@ -10,6 +10,7 @@ const CreateAgent = () => {
     maxSteps: 10,
     forbiddenTopics: '',
   })
+  const [maxStepsInput, setMaxStepsInput] = useState('10')
 
   function handleSave() {
     if (!config.name.trim() || !config.instructions.trim()) return
@@ -84,20 +85,19 @@ const CreateAgent = () => {
 
           {/* Max Iterations */}
           <div style={styles.section}>
-            <label style={styles.label}>
-              Max Iterations
-              <span style={styles.sliderVal}>{config.maxSteps}</span>
-            </label>
+            <label style={styles.label}>Max Iterations</label>
             <input
-              type="range"
+              type="number"
               min={1} max={20}
-              value={config.maxSteps}
-              onChange={e => setConfig({ ...config, maxSteps: Number(e.target.value) })}
-              style={styles.slider}
+              value={maxStepsInput}
+              onChange={e => setMaxStepsInput(e.target.value)}
+              onBlur={() => {
+                const val = Math.min(20, Math.max(1, Number(maxStepsInput) || 1))
+                setMaxStepsInput(String(val))
+                setConfig({ ...config, maxSteps: val })
+              }}
+              style={{ ...styles.input, width: 120 }}
             />
-            <div style={styles.sliderHints}>
-              <span>1</span><span>20</span>
-            </div>
           </div>
 
           {/* Forbidden Topics */}
