@@ -19,7 +19,7 @@ if not API_KEY:
     raise ValueError("GEMINI_API_KEY missing")
 
 client = genai.Client(api_key=API_KEY)
-MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "").replace(" ", "")
 EMAIL_USERNAME = os.getenv("EMAIL_USERNAME", "").strip()
@@ -47,7 +47,7 @@ def prepare_tool_args(tool_name: str, raw_args: Dict[str, Any]) -> Dict[str, Any
     """
 
     if tool_name == "read_email_inbox":
-        limit = 10
+        limit = 50
         folder = "INBOX"
 
         if isinstance(raw_args, dict):
@@ -70,7 +70,7 @@ def prepare_tool_args(tool_name: str, raw_args: Dict[str, Any]) -> Dict[str, Any
 
 # ---------------- AGENT LOOP (MERGED CORE) ----------------
 
-MAX_ITER = 15
+MAX_ITER = int(os.getenv("MAX_ITER", 20))
 
 
 def run_agent(prompt: str):
@@ -101,7 +101,7 @@ def run_agent(prompt: str):
             tool_called = False
 
             for part in candidate.content.parts:
-
+                print("ITER " + str(step) + ": ")
                 # ---------------- TEXT OUTPUT ----------------
                 if part.text:
                     print("\nGemini:", part.text)
@@ -168,11 +168,18 @@ def run_agent(prompt: str):
 
 if __name__ == "__main__":
     user_prompt = """
-    Check my email inbox and summarize all recent messages.
-    Also:
-    - Find current AI trends
-    - Calculate 25 * 84
-    - Summarize everything in one report
+Analyze the file "resource.pdf".
+
+Instructions:
+1. Read the document using available tools.
+2. Identify what the document is about.
+3. Provide a concise summary in 3–7 sentences.
+4. Mention the document type (report, manual, article, invoice, presentation, etc.) if recognizable.
+5. Mention key topics, entities, or important sections found in the document.
+6. Do not quote large parts of the document.
+7. If the document cannot be read, explain why.
+
+Return only the final summary.
     """
 
     print("\nFINAL:")
