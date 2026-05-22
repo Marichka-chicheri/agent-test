@@ -4,15 +4,24 @@ const CreateAgent = () => {
   const [config, setConfig] = useState({
     name: '',
     instructions: '',
-    maxSteps: 10,
+    model: 'Claude 3.5 Sonnet',
+    maxSteps: 5,
     forbiddenTopics: '',
   })
-  const [maxStepsInput, setMaxStepsInput] = useState('10')
+  const [maxStepsInput, setMaxStepsInput] = useState('5')
+
+  // 1. Стан для відображення поп-апу
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
 
   function handleSave() {
     if (!config.name.trim() || !config.instructions.trim()) return
-    // POST /api/agents/ when backend is ready
     console.log('Saving agent:', config)
+  }
+
+  // 2. Функція виходу
+  function handleLogout() {
+    console.log('Logging out...')
+    // Тут можна додати логіку очищення токенів або редирект
   }
 
   const canSave = config.name.trim() && config.instructions.trim()
@@ -25,14 +34,28 @@ const CreateAgent = () => {
         <div style={styles.logoBadge}>
           Agentic<span style={{ color: '#b3f0ff' }}>Studio</span>
         </div>
-        <div style={styles.profileBar}>Mary Fedorenko</div>
+
+        <div style={{ position: 'relative' }}>
+          <div
+            style={styles.profileBar}
+            onClick={() => setShowProfileMenu(!showProfileMenu)}
+          >
+            Mary Fedorenko
+          </div>
+
+          {showProfileMenu && (
+            <div style={styles.popup}>
+              <div style={styles.popupItem} onClick={handleLogout}>
+                Вийти
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* FORM CARD */}
+      {/* FORM CARD (без змін) */}
       <div style={styles.scroll}>
         <div style={styles.card}>
-
-          {/* Agent Name */}
           <div style={styles.section}>
             <label style={styles.label}>Name</label>
             <input
@@ -42,7 +65,6 @@ const CreateAgent = () => {
             />
           </div>
 
-          {/* System Prompt */}
           <div style={styles.section}>
             <label style={styles.label}>Instructions</label>
             <textarea
@@ -53,7 +75,32 @@ const CreateAgent = () => {
             />
           </div>
 
-          {/* Max Iterations */}
+          <div style={styles.section}>
+            <label style={styles.label}>Model</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {MODELS.map(model => (
+                <div
+                  key={model}
+                  onClick={() => setConfig({ ...config, model })}
+                  style={{
+                    ...styles.modelChip,
+                    background: config.model === model
+                      ? 'rgba(255,255,255,0.25)'
+                      : 'rgba(0,0,0,0.2)',
+                    border: config.model === model
+                      ? '1px solid rgba(255,255,255,0.5)'
+                      : '1px solid rgba(255,255,255,0.12)',
+                    color: config.model === model
+                      ? '#fff'
+                      : 'rgba(255,255,255,0.5)',
+                  }}
+                >
+                  {model}
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div style={styles.section}>
             <label style={styles.label}>Max Iterations</label>
             <input
@@ -70,7 +117,6 @@ const CreateAgent = () => {
             />
           </div>
 
-          {/* Forbidden Topics */}
           <div style={styles.section}>
             <label style={styles.label}>Forbidden Topics</label>
             <input
@@ -82,7 +128,6 @@ const CreateAgent = () => {
             <div style={styles.hint}>Separate topics with commas</div>
           </div>
 
-          {/* Tools */}
           <div style={styles.section}>
             <label style={styles.label}>Tools</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -109,7 +154,6 @@ const CreateAgent = () => {
               </div>
             </div>
           </div>
-
         </div>
       </div>
 
@@ -157,10 +201,34 @@ const styles = {
     borderRadius: 20, padding: '6px 14px',
     fontSize: 12, fontWeight: 700,
     color: '#fff', cursor: 'pointer',
+    userSelect: 'none',
   },
-  scroll: {
-    flex: 1, overflowY: 'auto',
+  popup: {
+    position: 'absolute',
+    top: 'calc(100% + 10px)',
+    right: 0,
+    background: 'rgba(25, 45, 60, 0.8)',
+    backdropFilter: 'blur(12px)',
+    border: '1px solid rgba(255,255,255,0.2)',
+    borderRadius: 12,
+    padding: '8px',
+    minWidth: '120px',
+    zIndex: 100,
+    boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
   },
+  popupItem: {
+    padding: '10px 14px',
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#ff8080',
+    cursor: 'pointer',
+    transition: 'background 0.2s',
+    display: 'flex',
+    alignItems: 'center',
+    background: 'rgba(255,255,255,0.05)',
+  },
+  scroll: { flex: 1, overflowY: 'auto' },
   card: {
     background: 'rgba(255,255,255,0.08)',
     backdropFilter: 'blur(12px)',
@@ -170,10 +238,7 @@ const styles = {
     padding: 16,
     display: 'flex', flexDirection: 'column',
   },
-  section: {
-    padding: '12px 0',
-    borderBottom: '1px solid rgba(255,255,255,0.07)',
-  },
+  section: { padding: '12px 0', borderBottom: '1px solid rgba(255,255,255,0.07)' },
   label: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
@@ -195,35 +260,19 @@ const styles = {
     resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6,
     boxSizing: 'border-box',
   },
-  modelChip: {
-    padding: '7px 14px', borderRadius: 20,
-    fontSize: 12, fontWeight: 600, cursor: 'pointer',
-    transition: 'all 0.15s',
-  },
+  modelChip: { padding: '7px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' },
   actionRow: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     background: 'rgba(0,0,0,0.2)',
     border: '1px solid rgba(255,255,255,0.1)',
     borderRadius: 12, padding: '12px 14px', cursor: 'pointer',
   },
-  slider: { width: '100%', accentColor: '#6ee7b7' },
-  sliderVal: { fontSize: 13, fontWeight: 700, color: '#6ee7b7' },
-  sliderHints: {
-    display: 'flex', justifyContent: 'space-between',
-    fontSize: 11, color: 'rgba(255,255,255,0.8)', marginTop: 4,
-  },
-  hint: {
-    fontSize: 11, color: 'rgba(255,255,255,0.8)', marginTop: 6,
-  },
+  hint: { fontSize: 11, color: 'rgba(255,255,255,0.8)', marginTop: 6 },
   actionIcon: { fontSize: 20 },
   actionTitle: { fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.9)' },
   actionDesc: { fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 },
   chevron: { fontSize: 20, color: 'rgba(255,255,255,0.3)' },
-  saveBtn: {
-    padding: '13px', borderRadius: 12,
-    color: '#fff', fontSize: 15, fontWeight: 700,
-    backdropFilter: 'blur(8px)', flexShrink: 0,
-  },
+  saveBtn: { padding: '13px', borderRadius: 12, color: '#fff', fontSize: 15, fontWeight: 700, backdropFilter: 'blur(8px)', flexShrink: 0 },
 }
 
 export default CreateAgent
