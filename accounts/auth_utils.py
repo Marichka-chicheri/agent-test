@@ -18,11 +18,17 @@ def get_api_keys_payload(user) -> dict:
         return {
             "gemini_configured": False,
             "gemini_key_hint": "",
+            "github_configured": False,
+            "github_status": "not_configured",
+            "github_key_hint": "",
         }
 
     return {
         "gemini_configured": record.gemini_configured,
         "gemini_key_hint": record.gemini_key_hint(),
+        "github_configured": record.github_configured,
+        "github_status": record.github_status(),
+        "github_key_hint": record.github_key_hint(),
     }
 
 

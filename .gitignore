@@ -12,6 +12,7 @@ venv/
 # Django / local DB
 db.sqlite3
 runs.db
+uploads/
 
 # IDE
 .idea/

@@ -33,12 +33,22 @@ export function setApiKeysMeta(apiKeys) {
   localStorage.setItem(API_KEYS_STORAGE_KEY, JSON.stringify(apiKeys))
 }
 
+export function defaultApiKeysMeta() {
+  return {
+    gemini_configured: false,
+    gemini_key_hint: "",
+    github_configured: false,
+    github_status: "not_configured",
+    github_key_hint: "",
+  }
+}
+
 export function getApiKeysMeta() {
   try {
     const raw = localStorage.getItem(API_KEYS_STORAGE_KEY)
-    return raw ? JSON.parse(raw) : { gemini_configured: false, gemini_key_hint: "" }
+    return raw ? JSON.parse(raw) : defaultApiKeysMeta()
   } catch {
-    return { gemini_configured: false, gemini_key_hint: "" }
+    return defaultApiKeysMeta()
   }
 }
 

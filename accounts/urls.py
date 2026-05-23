@@ -5,12 +5,15 @@ from .views import (
     register,
     login,
     api_keys,
+    app_config,
+    github_test_connection,
     rest_api_keys,
     rest_api_key_revoke,
     agents,
     agent_run_start,
     agent_run_detail,
     tool_approval_resolve,
+    upload_attachments,
 )
 
 urlpatterns = [
@@ -18,6 +21,9 @@ urlpatterns = [
     path("api/login/", login),
     path("api/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api/api-keys/", api_keys),
+    path("api/api-keys/github/test/", github_test_connection),
+    path("api/config/", app_config),
+    path("api/uploads/", upload_attachments),
     path("api/rest-keys/", rest_api_keys),
     path("api/rest-keys/<int:key_id>/", rest_api_key_revoke),
     path("api/agents/", agents),

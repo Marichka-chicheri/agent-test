@@ -12,6 +12,9 @@ class UserAPIKey(models.Model):
         related_name="api_keys",
     )
     gemini_api_key_encrypted = models.TextField(blank=True, default="")
+    github_token_encrypted = models.TextField(blank=True, default="")
+    github_token_valid = models.BooleanField(null=True, blank=True)
+    approval_allowlist = models.JSONField(default=list, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -36,6 +39,45 @@ class UserAPIKey(models.Model):
     @property
     def gemini_configured(self) -> bool:
         return bool(self.gemini_api_key_encrypted)
+
+    def set_github_token(self, raw_token: str | None) -> None:
+        token = (raw_token or "").strip()
+        self.github_token_encrypted = encrypt_value(token) if token else ""
+        if not token:
+            self.github_token_valid = None
+
+    def get_github_token(self) -> str:
+        if not self.github_token_encrypted:
+            return ""
+        return decrypt_value(self.github_token_encrypted)
+
+    def github_key_hint(self) -> str:
+        token = self.get_github_token()
+        if len(token) <= 8:
+            return "••••••••" if token else ""
+        return f"{token[:4]}…{token[-4:]}"
+
+    @property
+    def github_configured(self) -> bool:
+        return bool(self.github_token_encrypted)
+
+    def github_status(self) -> str:
+        if not self.github_configured:
+            return "not_configured"
+        if self.github_token_valid is True:
+            return "connected"
+        if self.github_token_valid is False:
+            return "invalid"
+        return "not_configured"
+
+    def add_approval_allow(self, tool_name: str) -> None:
+        entry = (tool_name or "").strip()
+        if not entry:
+            return
+        allowlist = list(self.approval_allowlist or [])
+        if entry not in allowlist:
+            allowlist.append(entry)
+            self.approval_allowlist = allowlist
 
 
 class Agent(models.Model):

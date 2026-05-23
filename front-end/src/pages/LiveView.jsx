@@ -5,20 +5,17 @@ import { AppNav } from '../components/AppNav'
 import { ProfileMenu } from '../components/ProfileMenu'
 import { useAuth } from '../hooks/useAuth'
 import { useEventStream } from '../hooks/useEventStream'
+import { FileUploadModal } from '../components/FileUploadModal'
 import { EventCard, ThinkingCard } from '../components/EventCard'
-
-const FILE_TYPES = [
-  { ext: 'txt',  label: 'Text (.txt)',    icon: '📄', accept: '.txt,text/plain' },
-  { ext: 'md',   label: 'Markdown (.md)', icon: '📝', accept: '.md,text/markdown,text/x-markdown' },
-  { ext: 'docx', label: 'Word (.docx)',   icon: '📘', accept: '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
-  { ext: 'xlsx', label: 'Excel (.xlsx)',  icon: '📊', accept: '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
-  { ext: 'pdf',  label: 'PDF (.pdf)',     icon: '📕', accept: '.pdf,application/pdf' },
-]
 
 function getFileIcon(filename) {
   const ext = (filename.split('.').pop() || '').toLowerCase()
-  const ft = FILE_TYPES.find(f => f.ext === ext)
-  return ft ? ft.icon : '📎'
+  const icons = {
+    txt: '📄', md: '📝', docx: '📘', xlsx: '📊', pdf: '📕',
+    csv: '📊', json: '📋', js: '📜', jsx: '⚛️', ts: '📘', tsx: '⚛️',
+    py: '🐍', html: '🌐', css: '🎨', yaml: '⚙️', yml: '⚙️', xml: '📰',
+  }
+  return icons[ext] || '📎'
 }
 
 export function LiveView() {
@@ -30,13 +27,11 @@ export function LiveView() {
   const [agentsLoading, setAgentsLoading] = useState(true)
   const [agentsError, setAgentsError] = useState('')
   const [activeAgent, setActiveAgent] = useState(null)
-  const [showUploadMenu, setShowUploadMenu] = useState(false)
-  const [uploadedFiles, setUploadedFiles] = useState([])
-  const [hoveredMenuItem, setHoveredMenuItem] = useState(null)
-  const { events, status, step, error, run, reset } = useEventStream()
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [attachments, setAttachments] = useState([])
+  const { events, status, step, error, run, reset } = useEventStream(pollTick)
   const feedRef = useRef(null)
-  const fileInputRef = useRef(null)
-  const uploadMenuRef = useRef(null)
+  const [pollTick, setPollTick] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -71,44 +66,36 @@ export function LiveView() {
     }
   }, [events])
 
-  // Close upload menu on outside click
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (uploadMenuRef.current && !uploadMenuRef.current.contains(e.target)) {
-        setShowUploadMenu(false)
-      }
-    }
-    if (showUploadMenu) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showUploadMenu])
-
-  function triggerFileInput(accept) {
-    setShowUploadMenu(false)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-      fileInputRef.current.accept = accept
-      fileInputRef.current.click()
-    }
+  function handleFilesReady(uploaded) {
+    setAttachments((prev) => {
+      const seen = new Set(prev.map((f) => f.path))
+      const next = [...prev]
+      uploaded.forEach((file) => {
+        if (!seen.has(file.path)) next.push(file)
+      })
+      return next
+    })
   }
 
-  function handleFileSelect(e) {
-    const files = Array.from(e.target.files)
-    if (files.length > 0) {
-      setUploadedFiles(prev => [...prev, ...files])
-    }
-  }
-
-  function removeFile(index) {
-    setUploadedFiles(prev => prev.filter((_, i) => i !== index))
+  function removeAttachment(index) {
+    setAttachments((prev) => prev.filter((_, i) => i !== index))
   }
 
   function handleRun() {
-    if ((!message.trim() && uploadedFiles.length === 0) || status === 'running' || !activeAgent) return
-    setSentMessage(message)
-    run(activeAgent.id, message)
+    if ((!message.trim() && attachments.length === 0) || status === 'running' || !activeAgent) return
+    const attachmentPaths = attachments.map((f) => f.path)
+    const displayMsg = [
+      message.trim(),
+      attachments.length ? `\n[${attachments.length} attached file(s)]` : '',
+    ].filter(Boolean).join('')
+    setSentMessage(displayMsg)
+    run(activeAgent.id, message, attachmentPaths)
     setMessage('')
+    setAttachments([])
+  }
+
+  function handleApprovalResolved() {
+    setPollTick((t) => t + 1)
   }
 
   function handleKeyDown(e) {
@@ -127,10 +114,12 @@ export function LiveView() {
   function handleReset() {
     reset()
     setSentMessage('')
-    setUploadedFiles([])
+    setAttachments([])
   }
 
-  const canRun = (message.trim() || uploadedFiles.length > 0) && status !== 'running' && !!activeAgent
+  const canRun = (message.trim() || attachments.length > 0) && status !== 'running' && !!activeAgent
+
+  const hasPendingApproval = events.some((e) => e.type === 'approval_pending')
 
   return (
     <div style={styles.root}>
@@ -233,9 +222,13 @@ export function LiveView() {
               <div style={styles.userBubble}>{sentMessage}</div>
             )}
             {events.map((event, i) => (
-              <EventCard key={i} event={event} />
+              <EventCard
+                key={`${i}-${event.approval_id || event.type}`}
+                event={event}
+                onApprovalResolved={handleApprovalResolved}
+              />
             ))}
-            {status === 'running' && <ThinkingCard />}
+            {status === 'running' && !hasPendingApproval && <ThinkingCard />}
             {status === 'error' && error && (
               <div style={styles.errorBanner}>{error}</div>
             )}
@@ -245,16 +238,19 @@ export function LiveView() {
           <div style={styles.inputWrapper}>
 
             {/* File chips */}
-            {uploadedFiles.length > 0 && (
+            {attachments.length > 0 && (
               <div style={styles.fileChipsRow}>
-                {uploadedFiles.map((file, i) => (
-                  <div key={i} style={styles.fileChip}>
+                {attachments.map((file, i) => (
+                  <div key={file.path || i} style={styles.fileChip}>
                     <span style={{ fontSize: 13 }}>{getFileIcon(file.name)}</span>
                     <span style={styles.chipName}>{file.name}</span>
                     <span
-                      onClick={() => removeFile(i)}
+                      onClick={() => removeAttachment(i)}
                       style={styles.chipRemove}
                       title="Remove"
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => e.key === 'Enter' && removeAttachment(i)}
                     >
                       ×
                     </span>
@@ -267,51 +263,27 @@ export function LiveView() {
             <div style={styles.inputArea}>
 
               {/* + Attach button */}
-              <div ref={uploadMenuRef} style={{ position: 'relative', flexShrink: 0 }}>
-                <button
-                  onClick={() => setShowUploadMenu(v => !v)}
-                  style={{
-                    ...styles.attachBtn,
-                    background: showUploadMenu
-                      ? 'rgba(255,255,255,0.25)'
-                      : 'rgba(255,255,255,0.12)',
-                  }}
-                  title="Attach file"
-                  disabled={status === 'running'}
-                >
-                  +
-                </button>
+              <button
+                type="button"
+                onClick={() => setShowUploadModal(true)}
+                style={{
+                  ...styles.attachBtn,
+                  background: showUploadModal
+                    ? 'rgba(255,255,255,0.25)'
+                    : 'rgba(255,255,255,0.12)',
+                }}
+                title="Attach files"
+                disabled={status === 'running'}
+                aria-label="Attach files"
+              >
+                +
+              </button>
 
-                {showUploadMenu && (
-                  <div style={styles.uploadMenu}>
-                    <div style={styles.uploadMenuHeader}>Attach file</div>
-                    {FILE_TYPES.map(ft => (
-                      <div
-                        key={ft.ext}
-                        onClick={() => triggerFileInput(ft.accept)}
-                        onMouseEnter={() => setHoveredMenuItem(ft.ext)}
-                        onMouseLeave={() => setHoveredMenuItem(null)}
-                        style={{
-                          ...styles.uploadMenuItem,
-                          background: hoveredMenuItem === ft.ext
-                            ? 'rgba(255,255,255,0.12)'
-                            : 'transparent',
-                        }}
-                      >
-                        <span style={{ fontSize: 15 }}>{ft.icon}</span>
-                        <span>{ft.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Hidden file input */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                style={{ display: 'none' }}
-                onChange={handleFileSelect}
+              <FileUploadModal
+                open={showUploadModal}
+                onClose={() => setShowUploadModal(false)}
+                onFilesReady={handleFilesReady}
+                disabled={status === 'running'}
               />
 
               <input

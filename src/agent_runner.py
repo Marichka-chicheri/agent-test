@@ -6,7 +6,7 @@ import asyncio
 import inspect
 import os
 import time
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from dotenv import load_dotenv
 from google import genai
@@ -17,6 +17,7 @@ from approval_manager import (
     DEFAULT_APPROVAL_TIMEOUT_SEC,
     approval_manager,
 )
+from approval_policy import is_on_allowlist, requires_human_approval
 from logger import add_step, create_run, finish_run, init_db
 from tools import TOOLS, TOOL_DECLARATIONS
 
@@ -111,7 +112,28 @@ def _execute_with_approval(
     raw_args: Dict[str, Any],
     args: Dict[str, Any],
     on_step: Optional[Callable[[dict], None]],
+    approval_allowlist: Optional[List[str]] = None,
 ) -> ToolResult:
+    if not requires_human_approval(tool_name, raw_args):
+        return execute_tool(tool_name, args)
+
+    if is_on_allowlist(tool_name, approval_allowlist):
+        started = time.perf_counter()
+        result = execute_tool(tool_name, args)
+        duration_ms = (time.perf_counter() - started) * 1000
+        success = _tool_succeeded(result)
+        error_msg: Optional[str] = None
+        if isinstance(result, dict):
+            error_msg = result.get("error")
+        agent_metrics.record_tool_call(
+            run_id,
+            tool_name,
+            duration_ms,
+            success=success,
+            error=str(error_msg) if error_msg else None,
+        )
+        return result
+
     pending = approval_manager.request(run_id, tool_name, raw_args)
     _record_step(
         run_id,
@@ -159,6 +181,7 @@ def run_agent(
     max_iter: Optional[int] = None,
     api_key: Optional[str] = None,
     model: Optional[str] = None,
+    approval_allowlist: Optional[List[str]] = None,
 ) -> str:
     """Run the Gemini agent loop; invoke on_step for each persisted step."""
     client = _get_client(api_key)
@@ -214,6 +237,7 @@ def run_agent(
                         raw_args,
                         args,
                         on_step,
+                        approval_allowlist=approval_allowlist,
                     )
 
                     _record_step(

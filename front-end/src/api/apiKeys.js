@@ -8,11 +8,15 @@ export async function fetchApiKeys() {
   })
 }
 
-export async function saveApiKeys({ gemini_api_key }) {
+export async function saveApiKeys({ gemini_api_key, github_token } = {}) {
+  const body = {}
+  if (gemini_api_key !== undefined) body.gemini_api_key = gemini_api_key
+  if (github_token !== undefined) body.github_token = github_token
+
   return withRetry(async () => {
     const res = await authFetch("/api-keys/", {
       method: "PUT",
-      body: JSON.stringify({ gemini_api_key }),
+      body: JSON.stringify(body),
     })
     return parseJsonResponse(res)
   })

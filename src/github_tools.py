@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextvars
 import os
-from typing import Any, Dict, List, Optional
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator, List, Optional
 
 import httpx
 from google.genai import types
@@ -12,6 +14,23 @@ from approval_manager import APPROVAL_NOTE
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
 GITHUB_API = "https://api.github.com"
+_user_github_token: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "user_github_token",
+    default="",
+)
+
+
+def _active_github_token() -> str:
+    return _user_github_token.get() or GITHUB_TOKEN
+
+
+@contextmanager
+def github_token_context(token: str) -> Iterator[None]:
+    reset = _user_github_token.set((token or "").strip())
+    try:
+        yield
+    finally:
+        _user_github_token.reset(reset)
 
 
 def _auth_headers() -> Dict[str, str]:
@@ -19,8 +38,9 @@ def _auth_headers() -> Dict[str, str]:
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    if GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+    token = _active_github_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     return headers
 
 
@@ -31,8 +51,8 @@ async def _github_request(
     json_body: Optional[Dict[str, Any]] = None,
     params: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    if not GITHUB_TOKEN:
-        return {"success": False, "error": "GITHUB_TOKEN is not configured."}
+    if not _active_github_token():
+        return {"success": False, "error": "GitHub token is not configured."}
 
     url = f"{GITHUB_API}{path}"
     async with httpx.AsyncClient() as client:

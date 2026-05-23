@@ -9,7 +9,12 @@ def _csv_env(name: str, default: str = "") -> list[str]:
     raw = os.getenv(name, default)
     return [item.strip() for item in raw.split(",") if item.strip()]
 
-CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
+_DEFAULT_CORS = (
+    "http://localhost:5173,"
+    "http://127.0.0.1:5173,"
+    "https://agent-test-orcin.vercel.app"
+)
+CORS_ALLOWED_ORIGINS = _csv_env("CORS_ALLOWED_ORIGINS", _DEFAULT_CORS)
 
 DEBUG = os.environ.get("DEBUG", "False") == "True"
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -66,6 +71,14 @@ GEMINI_MODEL = 'gemini-2.5-flash'
 # Max REST API keys (Authorization: Api-Key …) per user
 MAX_REST_API_KEYS_PER_USER = 10
 
+# Chat file uploads (comma-separated extensions, with or without leading dot)
+AGENT_SUPPORTED_EXTENSIONS = _csv_env(
+    "AGENT_SUPPORTED_EXTENSIONS",
+    "txt,md,docx,xlsx,csv,pdf,json,js,jsx,ts,tsx,py,html,css,yaml,yml,xml",
+)
+AGENT_UPLOAD_MAX_BYTES = int(os.getenv("AGENT_UPLOAD_MAX_BYTES", str(10 * 1024 * 1024)))
+AGENT_UPLOAD_ROOT = BASE_DIR / "uploads"
+
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
@@ -112,11 +125,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
-# Comma-separated list; include your Vercel URL (no trailing slash).
-_DEFAULT_CORS = (
-    "http://localhost:5173,"
-    "http://127.0.0.1:5173,"
-    "https://agent-test-orcin.vercel.app"
+CSRF_TRUSTED_ORIGINS = _csv_env(
+    "CSRF_TRUSTED_ORIGINS",
+    ",".join(CORS_ALLOWED_ORIGINS),
 )
-
-CSRF_TRUSTED_ORIGINS = _csv_env("CSRF_TRUSTED_ORIGINS", ",".join(CORS_ALLOWED_ORIGINS))

@@ -3,6 +3,7 @@ import { isAuthenticated } from "./api/api"
 import { AuthProvider } from "./context/AuthProvider"
 import { ProtectedRoute } from "./components/ProtectedRoute"
 import CreateAgent from "./pages/CreateAgent"
+import { SettingsErrorBoundary } from "./components/SettingsErrorBoundary"
 import { ApiKeysSettings } from "./pages/ApiKeysSettings"
 import { LiveView } from "./pages/LiveView"
 import { Register } from "./pages/Register"
@@ -39,7 +40,9 @@ function App() {
             path="/settings"
             element={
               <ProtectedRoute>
-                <ApiKeysSettings />
+                <SettingsErrorBoundary>
+                  <ApiKeysSettings />
+                </SettingsErrorBoundary>
               </ProtectedRoute>
             }
           />

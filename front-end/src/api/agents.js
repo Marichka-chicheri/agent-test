@@ -18,11 +18,14 @@ export async function getAgents() {
   })
 }
 
-export async function startAgentRun(agentId, message) {
+export async function startAgentRun(agentId, message, attachmentPaths = []) {
   return withRetry(async () => {
     const res = await authFetch(`/agents/${agentId}/run/`, {
       method: "POST",
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({
+        message: message || "",
+        attachment_paths: attachmentPaths,
+      }),
     })
     return parseJsonResponse(res)
   }, { retries: 1 })

@@ -9,7 +9,7 @@ function countSteps(events) {
   ).length
 }
 
-export function useEventStream() {
+export function useEventStream(refreshKey = 0) {
   const [events, setEvents] = useState([])
   const [status, setStatus] = useState("idle")
   const [step, setStep] = useState(0)
@@ -62,7 +62,7 @@ export function useEventStream() {
   }, [applyRunSnapshot, stopPolling])
 
   const run = useCallback(
-    async (agentId, message) => {
+    async (agentId, message, attachmentPaths = []) => {
       stopPolling()
       setEvents([])
       setStatus("running")
@@ -71,7 +71,7 @@ export function useEventStream() {
       runIdRef.current = null
 
       try {
-        const { run_id: runId } = await startAgentRun(agentId, message)
+        const { run_id: runId } = await startAgentRun(agentId, message, attachmentPaths)
         runIdRef.current = runId
 
         const initial = await getAgentRun(runId)
@@ -97,6 +97,12 @@ export function useEventStream() {
   }, [stopPolling])
 
   useEffect(() => () => stopPolling(), [stopPolling])
+
+  useEffect(() => {
+    if (refreshKey > 0 && runIdRef.current && status === "running") {
+      pollRun()
+    }
+  }, [refreshKey, pollRun, status])
 
   return { events, status, step, error, run, reset }
 }

@@ -11,9 +11,11 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from .agent_executor import execute_agent_run
+from .agent_executor import execute_agent_run, build_run_message
 from .auth_utils import auth_response, get_api_keys_payload
+from .github_utils import test_github_token, validate_github_token_format
 from .models import Agent, AgentRun, RestAPIKey, UserAPIKey
+from .upload_utils import max_upload_bytes, save_upload, supported_extensions
 from .rest_api_key_utils import generate_rest_api_key, hash_rest_api_key, key_display_prefix
 from .serializers import (
     RegisterSerializer,
@@ -74,11 +76,96 @@ def api_keys(request):
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    update_fields = ["updated_at"]
+
     if "gemini_api_key" in serializer.validated_data:
         record.set_gemini_key(serializer.validated_data["gemini_api_key"])
-        record.save(update_fields=["gemini_api_key_encrypted", "updated_at"])
+        update_fields.append("gemini_api_key_encrypted")
 
+    if "github_token" in serializer.validated_data:
+        token = serializer.validated_data["github_token"]
+        if token:
+            format_error = validate_github_token_format(token)
+            if format_error:
+                return Response({"error": format_error}, status=status.HTTP_400_BAD_REQUEST)
+            record.set_github_token(token)
+            ok, _msg = test_github_token(token)
+            record.github_token_valid = ok
+            update_fields.extend(["github_token_encrypted", "github_token_valid"])
+        else:
+            record.set_github_token("")
+            update_fields.extend(["github_token_encrypted", "github_token_valid"])
+
+    record.save(update_fields=list(dict.fromkeys(update_fields)))
     return Response(get_api_keys_payload(request.user))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def github_test_connection(request):
+    record, _ = UserAPIKey.objects.get_or_create(user=request.user)
+    token = record.get_github_token()
+    if not token:
+        return Response(
+            {"status": "not_configured", "message": "GitHub token is not configured."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    ok, message = test_github_token(token)
+    record.github_token_valid = ok
+    record.save(update_fields=["github_token_valid", "updated_at"])
+    return Response(
+        {
+            "status": "connected" if ok else "invalid",
+            "message": message,
+            **get_api_keys_payload(request.user),
+        },
+        status=status.HTTP_200_OK if ok else status.HTTP_400_BAD_REQUEST,
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def app_config(request):
+    extensions = [ext.lstrip(".") for ext in supported_extensions()]
+    return Response(
+        {
+            "supported_extensions": extensions,
+            "max_upload_bytes": max_upload_bytes(),
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def upload_attachments(request):
+    files = request.FILES.getlist("files")
+    if not files:
+        single = request.FILES.get("file")
+        if single:
+            files = [single]
+
+    if not files:
+        return Response(
+            {"error": "No files provided."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    saved = []
+    errors = []
+    for uploaded in files:
+        try:
+            saved.append(save_upload(request.user.id, uploaded))
+        except ValueError as exc:
+            errors.append({"name": uploaded.name, "error": str(exc)})
+
+    if not saved and errors:
+        return Response({"error": errors[0]["error"], "errors": errors}, status=status.HTTP_400_BAD_REQUEST)
+
+    payload = {"files": saved}
+    if errors:
+        payload["errors"] = errors
+    return Response(payload, status=status.HTTP_201_CREATED if saved else status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(["GET", "POST"])
@@ -146,10 +233,11 @@ def agents(request):
 def agent_run_start(request, agent_id):
     agent = get_object_or_404(Agent, pk=agent_id, owner=request.user)
     message = (request.data.get("message") or "").strip()
+    attachment_paths = request.data.get("attachment_paths") or []
 
-    if not message:
+    if not message and not attachment_paths:
         return Response(
-            {"error": "message is required"},
+            {"error": "message or attachments are required"},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -166,10 +254,12 @@ def agent_run_start(request, agent_id):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    full_message = build_run_message(message, attachment_paths, request.user.id)
+
     run = AgentRun.objects.create(
         agent=agent,
         owner=request.user,
-        message=message,
+        message=full_message,
         status=AgentRun.STATUS_RUNNING,
     )
 
@@ -216,6 +306,13 @@ def tool_approval_resolve(request, approval_id: str):
 
     if decision == "approve":
         approval_manager.approve(approval_id)
+        if request.data.get("always_allow"):
+            try:
+                record = request.user.api_keys
+            except UserAPIKey.DoesNotExist:
+                record = UserAPIKey.objects.create(user=request.user)
+            record.add_approval_allow(pending.tool_name)
+            record.save(update_fields=["approval_allowlist", "updated_at"])
     else:
         approval_manager.deny(approval_id)
 

@@ -1,3 +1,5 @@
+import { ApprovalCard } from "./ApprovalCard"
+
 const STYLES = {
   thought: {
     bg: 'rgba(0,30,40,0.45)', border: 'rgba(255,255,255,0.15)',
@@ -25,7 +27,11 @@ const STYLES = {
   },
 }
 
-export function EventCard({ event }) {
+export function EventCard({ event, onApprovalResolved }) {
+  if (event.type === "approval_pending") {
+    return <ApprovalCard event={event} onResolved={onApprovalResolved} />
+  }
+
   const s = STYLES[event.type] || STYLES.thought
   const body =
     event.content ||

@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+@keyframes settings-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @font-face {
   font-family: 'Frutiger';
   src: url('./assets/fonts/Frutiger.ttf') format('truetype');

@@ -37,6 +37,22 @@ def _read_document_sync(path: str, max_chars: int) -> Dict[str, Any]:
         return {"success": False, "error": f"File not found: {path}"}
 
     ext = file_path.suffix.lower()
+    text_extensions = {
+        ".txt",
+        ".md",
+        ".json",
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".py",
+        ".html",
+        ".css",
+        ".yaml",
+        ".yml",
+        ".xml",
+        ".csv",
+    }
     try:
         if ext == ".pdf":
             text = read_pdf(path)
@@ -44,7 +60,7 @@ def _read_document_sync(path: str, max_chars: int) -> Dict[str, Any]:
             text = read_docx(path)
         elif ext in (".xlsx", ".xls"):
             text = read_excel(path)
-        elif ext in (".txt", ".md"):
+        elif ext in text_extensions:
             text = file_path.read_text(encoding="utf-8")
         else:
             return {"success": False, "error": f"Unsupported format: {ext}"}
