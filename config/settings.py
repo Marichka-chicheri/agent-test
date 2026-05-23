@@ -9,10 +9,11 @@ def _csv_env(name: str, default: str = "") -> list[str]:
     raw = os.getenv(name, default)
     return [item.strip() for item in raw.split(",") if item.strip()]
 
+CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
 
-SECRET_KEY = os.getenv("SECRET_KEY", "hackathon-secret-key-change-later")
-
-DEBUG = os.getenv("DEBUG", "true").lower() in ("1", "true", "yes")
+DEBUG = os.environ.get("DEBUG", "False") == "True"
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+SECRET_KEY = os.getenv("SECRET_KEY", "my_secret_key")
 
 ALLOWED_HOSTS = _csv_env("ALLOWED_HOSTS", "*") or ["*"]
 
@@ -117,6 +118,5 @@ _DEFAULT_CORS = (
     "http://127.0.0.1:5173,"
     "https://agent-test-orcin.vercel.app"
 )
-CORS_ALLOWED_ORIGINS = _csv_env("CORS_ALLOWED_ORIGINS", _DEFAULT_CORS)
 
 CSRF_TRUSTED_ORIGINS = _csv_env("CSRF_TRUSTED_ORIGINS", ",".join(CORS_ALLOWED_ORIGINS))
