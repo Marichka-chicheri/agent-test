@@ -57,6 +57,7 @@ const CreateAgent = () => {
   const [availableTools, setAvailableTools] = useState([])
   const [toolsLoading, setToolsLoading] = useState(true)
   const [toolsError, setToolsError] = useState("")
+  const [toolsUsingFallback, setToolsUsingFallback] = useState(false)
   const [selectedTools, setSelectedTools] = useState(new Set())
   const [agentLoading, setAgentLoading] = useState(isEditMode)
   const [agentLoadError, setAgentLoadError] = useState("")
@@ -85,9 +86,10 @@ const CreateAgent = () => {
       try {
         setToolsLoading(true)
         setToolsError("")
-        const tools = await fetchAvailableTools()
+        const { tools, fromFallback } = await fetchAvailableTools()
         if (cancelled) return
         setAvailableTools(tools)
+        setToolsUsingFallback(fromFallback)
 
         if (isEditMode && editAgentId) {
           try {
@@ -374,6 +376,12 @@ const CreateAgent = () => {
               </button>
             </div>
 
+            {toolsUsingFallback && !toolsError && (
+              <div style={styles.toolsWarn} role="status">
+                Tool list loaded from app defaults. Redeploy the API so{" "}
+                <code style={styles.inlineCode}>GET /api/tools/</code> is available.
+              </div>
+            )}
             {toolsError && (
               <div style={styles.submitError} role="alert">{toolsError}</div>
             )}
@@ -545,6 +553,20 @@ const styles = {
     resize: "vertical",
   },
   fieldError: { display: "block", marginTop: 6, fontSize: 12, color: "#ffb4b4" },
+  toolsWarn: {
+    fontSize: 12,
+    color: "#fde68a",
+    background: "rgba(120,80,0,0.25)",
+    border: "1px solid rgba(255,200,80,0.35)",
+    borderRadius: 10,
+    padding: "10px 12px",
+    marginBottom: 8,
+    lineHeight: 1.5,
+  },
+  inlineCode: {
+    fontFamily: "ui-monospace, monospace",
+    fontSize: 11,
+  },
   submitError: {
     fontSize: 13,
     color: "#ffb4b4",

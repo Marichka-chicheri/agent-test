@@ -1,5 +1,7 @@
 import { authFetch } from "./api"
+import { resolveApiUrl } from "./config"
 import { API_PATHS } from "./paths"
+import { FALLBACK_TOOL_CATALOG } from "./toolCatalogFallback"
 import { parseJsonResponse, withRetry } from "./http"
 
 /**
@@ -34,19 +36,40 @@ export function normalizeToolCatalog(payload) {
   return list.map(normalizeToolEntry).filter(Boolean)
 }
 
+function isToolsNotFoundError(err) {
+  const message = err?.message || ""
+  return (
+    message.includes("404") ||
+    message.includes("not found") ||
+    message.includes("<!doctype") ||
+    message.includes("API route not found")
+  )
+}
+
 export async function fetchAvailableTools() {
   const path = API_PATHS.tools()
-  console.debug("[tools] GET", path)
+  const url = resolveApiUrl(path)
+  console.debug("[tools] GET", url)
 
-  return withRetry(async () => {
-    const res = await authFetch(path)
-    const data = await parseJsonResponse(res)
-    const tools = normalizeToolCatalog(data)
+  try {
+    return await withRetry(async () => {
+      const res = await authFetch(path)
+      const data = await parseJsonResponse(res)
+      const tools = normalizeToolCatalog(data)
 
-    if (!tools.length) {
-      console.warn("[tools] Catalog empty or unrecognized shape", data)
+      if (!tools.length) {
+        console.warn("[tools] Catalog empty or unrecognized shape", data)
+        return { tools: FALLBACK_TOOL_CATALOG, fromFallback: true }
+      }
+
+      return { tools, fromFallback: false }
+    }, { retries: 1 })
+  } catch (err) {
+    console.error("[tools] Catalog request failed", url, err)
+    if (isToolsNotFoundError(err)) {
+      console.warn("[tools] Using built-in catalog fallback — deploy backend with GET /api/tools/")
+      return { tools: FALLBACK_TOOL_CATALOG, fromFallback: true }
     }
-
-    return tools
-  })
+    throw err
+  }
 }

@@ -1,4 +1,4 @@
-import { API_URL } from "./config"
+import { resolveApiUrl } from "./config"
 import { applyAuthPayload, setUserInfo } from "./api"
 import { formatApiError } from "./errors"
 
@@ -23,7 +23,7 @@ async function parseAuthResponse(res) {
 }
 
 export async function login({ username, password }) {
-  const res = await fetch(`${API_URL}/login/`, {
+  const res = await fetch(resolveApiUrl("/login/"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
@@ -34,7 +34,7 @@ export async function login({ username, password }) {
 }
 
 export async function register({ username, password, email = "" }) {
-  const res = await fetch(`${API_URL}/register/`, {
+  const res = await fetch(resolveApiUrl("/register/"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),

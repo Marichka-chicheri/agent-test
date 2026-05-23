@@ -19,6 +19,8 @@ describe("normalizeToolEntry", () => {
   })
 })
 
+// fetchAvailableTools integration tested via Django; normalize tests below.
+
 describe("normalizeToolCatalog", () => {
   it("accepts wrapped tools array from API", () => {
     const tools = normalizeToolCatalog({
