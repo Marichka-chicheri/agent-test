@@ -1,0 +1,188 @@
+"""Agent execution loop using Gemini API only."""
+
+import os
+import asyncio
+import inspect
+from typing import Any, Callable, Dict, Optional
+
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
+
+from tools import TOOLS, TOOL_DECLARATIONS
+from logger import init_db, create_run, add_step, finish_run
+
+load_dotenv()
+init_db()
+
+DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+MAX_ITER = int(os.getenv("MAX_ITER", 20))
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "").replace(" ", "")
+EMAIL_USERNAME = os.getenv("EMAIL_USERNAME", "").strip()
+IMAP_HOST = os.getenv("IMAP_HOST", "imap.gmail.com").strip()
+
+_clients: Dict[str, genai.Client] = {}
+
+
+def _resolve_api_key(api_key: Optional[str]) -> str:
+    key = (api_key or os.getenv("GEMINI_API_KEY") or "").strip()
+    if not key:
+        raise ValueError("Gemini API key is required")
+    return key
+
+
+def _get_client(api_key: Optional[str] = None) -> genai.Client:
+    key = _resolve_api_key(api_key)
+    if key not in _clients:
+        _clients[key] = genai.Client(api_key=key)
+    return _clients[key]
+
+
+def execute_tool(name: str, args: Dict[str, Any]):
+    if name not in TOOLS:
+        return {"error": f"Unknown tool {name}"}
+
+    tool = TOOLS[name]
+
+    try:
+        if inspect.iscoroutinefunction(tool):
+            return asyncio.run(tool(**args))
+        return tool(**args)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def prepare_tool_args(tool_name: str, raw_args: Dict[str, Any]) -> Dict[str, Any]:
+    if tool_name == "read_email_inbox":
+        limit = 50
+        folder = "INBOX"
+
+        if isinstance(raw_args, dict):
+            if isinstance(raw_args.get("limit"), int):
+                limit = raw_args["limit"]
+            if isinstance(raw_args.get("folder"), str):
+                folder = raw_args["folder"]
+
+        return {
+            "host": IMAP_HOST,
+            "username": EMAIL_USERNAME,
+            "password": EMAIL_PASSWORD,
+            "limit": limit,
+            "folder": folder,
+        }
+
+    return dict(raw_args or {})
+
+
+def _record_step(run_id: int, step: dict, on_step: Optional[Callable[[dict], None]]):
+    add_step(run_id, step)
+    if on_step:
+        on_step(step)
+
+
+def run_agent(
+    prompt: str,
+    system_prompt: str,
+    on_step: Optional[Callable[[dict], None]] = None,
+    max_iter: Optional[int] = None,
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+) -> str:
+    """Run the Gemini agent loop; invoke on_step for each persisted step."""
+    client = _get_client(api_key)
+    instruction = (system_prompt or "").strip()
+    if not instruction:
+        raise ValueError("System prompt is required")
+
+    gemini_model = (model or DEFAULT_GEMINI_MODEL).strip()
+    limit = max_iter if max_iter is not None else MAX_ITER
+
+    run_id = create_run(prompt)
+    history = [
+        types.Content(role="user", parts=[types.Part(text=prompt)])
+    ]
+
+    try:
+        for step in range(limit):
+            response = client.models.generate_content(
+                model=gemini_model,
+                contents=history,
+                config=types.GenerateContentConfig(
+                    system_instruction=instruction,
+                    tools=[types.Tool(function_declarations=TOOL_DECLARATIONS)],
+                ),
+            )
+
+            candidate = response.candidates[0]
+            history.append(candidate.content)
+
+            tool_called = False
+
+            for part in candidate.content.parts:
+                if part.text:
+                    step_data = {"type": "thought", "content": part.text}
+                    _record_step(run_id, step_data, on_step)
+
+                if part.function_call:
+                    tool_called = True
+                    tool_name = part.function_call.name
+                    raw_args = dict(part.function_call.args or {})
+                    args = prepare_tool_args(tool_name, raw_args)
+
+                    _record_step(
+                        run_id,
+                        {"type": "tool_call", "tool": tool_name, "args": raw_args},
+                        on_step,
+                    )
+
+                    result = execute_tool(tool_name, args)
+
+                    _record_step(
+                        run_id,
+                        {"type": "observation", "tool": tool_name, "result": result},
+                        on_step,
+                    )
+
+                    history.append(
+                        types.Content(
+                            role="tool",
+                            parts=[
+                                types.Part(
+                                    function_response=types.FunctionResponse(
+                                        name=tool_name,
+                                        response=result
+                                        if isinstance(result, dict)
+                                        else {"result": result},
+                                    )
+                                )
+                            ],
+                        )
+                    )
+
+            if not tool_called:
+                final_text = response.text or ""
+                finish_run(run_id, final_text, "done")
+                _record_step(
+                    run_id,
+                    {"type": "final", "content": final_text},
+                    on_step,
+                )
+                return final_text
+
+        message = "Iteration limit reached"
+        finish_run(run_id, message, "error")
+        _record_step(run_id, {"type": "error", "message": message}, on_step)
+        return message
+
+    except Exception as e:
+        finish_run(run_id, str(e), "error")
+        _record_step(run_id, {"type": "error", "message": str(e)}, on_step)
+        raise
+
+
+def can_run_live_agent(api_key: Optional[str] = None) -> bool:
+    try:
+        _resolve_api_key(api_key)
+        return True
+    except ValueError:
+        return False
