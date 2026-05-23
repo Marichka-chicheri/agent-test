@@ -1,4 +1,6 @@
+import sys
 import threading
+from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth import authenticate
@@ -21,6 +23,12 @@ from .serializers import (
     RestAPIKeySerializer,
     RestAPIKeyCreateSerializer,
 )
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_ROOT = PROJECT_ROOT / "src"
+for path in (str(SRC_ROOT), str(PROJECT_ROOT)):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 
 @api_view(["POST"])
@@ -184,3 +192,31 @@ def agent_run_detail(request, run_id):
     run = get_object_or_404(AgentRun, pk=run_id, owner=request.user)
     serializer = AgentRunSerializer(run)
     return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def tool_approval_resolve(request, approval_id: str):
+    """Approve or deny a pending tool call (see approval_manager)."""
+    from approval_manager import approval_manager
+
+    decision = (request.data.get("decision") or "").strip().lower()
+    if decision not in ("approve", "deny"):
+        return Response(
+            {"error": "decision must be 'approve' or 'deny'"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    pending = approval_manager.get_pending(approval_id)
+    if pending is None:
+        return Response(
+            {"error": "Approval not found or already resolved"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if decision == "approve":
+        approval_manager.approve(approval_id)
+    else:
+        approval_manager.deny(approval_id)
+
+    return Response({"approval_id": approval_id, "decision": decision})

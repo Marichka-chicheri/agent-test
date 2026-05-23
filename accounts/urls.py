@@ -10,6 +10,7 @@ from .views import (
     agents,
     agent_run_start,
     agent_run_detail,
+    tool_approval_resolve,
 )
 
 urlpatterns = [
@@ -22,4 +23,8 @@ urlpatterns = [
     path("api/agents/", agents),
     path("api/agents/<int:agent_id>/run/", agent_run_start),
     path("api/runs/<int:run_id>/", agent_run_detail),
+    path(
+        "api/approvals/<str:approval_id>/",
+        tool_approval_resolve,
+    ),
 ]
