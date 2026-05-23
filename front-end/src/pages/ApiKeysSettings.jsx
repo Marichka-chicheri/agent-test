@@ -1,6 +1,11 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { logout } from "../api/api"
+import {
+  createRestApiKey,
+  fetchRestApiKeys,
+  revokeRestApiKey,
+} from "../api/restApiKeys"
 import { AppNav } from "../components/AppNav"
 import { useAuth } from "../hooks/useAuth"
 
@@ -12,6 +17,16 @@ export function ApiKeysSettings() {
   const [loadingMeta, setLoadingMeta] = useState(true)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
+  const [restKeys, setRestKeys] = useState([])
+  const [restKeyName, setRestKeyName] = useState("")
+  const [restLoading, setRestLoading] = useState(false)
+  const [restError, setRestError] = useState("")
+  const [createdRestKey, setCreatedRestKey] = useState(null)
+
+  const loadRestKeys = useCallback(async () => {
+    const data = await fetchRestApiKeys()
+    setRestKeys(Array.isArray(data) ? data : [])
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -27,9 +42,18 @@ export function ApiKeysSettings() {
       }
     }
 
+    async function loadRest() {
+      try {
+        await loadRestKeys()
+      } catch (err) {
+        if (!cancelled) setRestError(err.message || "Failed to load REST API keys")
+      }
+    }
+
     load()
+    loadRest()
     return () => { cancelled = true }
-  }, [loadApiKeys])
+  }, [loadApiKeys, loadRestKeys])
 
   async function handleSave(e) {
     e.preventDefault()
@@ -60,6 +84,44 @@ export function ApiKeysSettings() {
       setError(err.message || "Failed to remove API key")
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleCreateRestKey(e) {
+    e.preventDefault()
+    setRestError("")
+    setCreatedRestKey(null)
+
+    const name = restKeyName.trim()
+    if (!name) {
+      setRestError("Enter a name for the API key.")
+      return
+    }
+
+    try {
+      setRestLoading(true)
+      const created = await createRestApiKey(name)
+      setCreatedRestKey(created)
+      setRestKeyName("")
+      await loadRestKeys()
+    } catch (err) {
+      setRestError(err.message || "Failed to create REST API key")
+    } finally {
+      setRestLoading(false)
+    }
+  }
+
+  async function handleRevokeRestKey(keyId) {
+    setRestError("")
+    try {
+      setRestLoading(true)
+      await revokeRestApiKey(keyId)
+      if (createdRestKey?.id === keyId) setCreatedRestKey(null)
+      await loadRestKeys()
+    } catch (err) {
+      setRestError(err.message || "Failed to revoke API key")
+    } finally {
+      setRestLoading(false)
     }
   }
 
@@ -137,6 +199,68 @@ export function ApiKeysSettings() {
               Back to Live
             </Link>
           </div>
+        </form>
+
+        <hr style={styles.divider} />
+
+        <h3 style={styles.sectionTitle}>REST API keys</h3>
+        <p style={styles.subtitle}>
+          Use these to call the API from scripts or CI without a browser session.
+          Send <code style={styles.code}>Authorization: Api-Key &lt;key&gt;</code> or{" "}
+          <code style={styles.code}>X-API-Key: &lt;key&gt;</code>.
+        </p>
+
+        {createdRestKey?.key && (
+          <div style={styles.keyReveal}>
+            <strong>Copy this key now — it will not be shown again.</strong>
+            <code style={styles.keyValue}>{createdRestKey.key}</code>
+          </div>
+        )}
+
+        {restKeys.length > 0 ? (
+          <ul style={styles.keyList}>
+            {restKeys.map((item) => (
+              <li key={item.id} style={styles.keyItem}>
+                <div>
+                  <strong>{item.name}</strong>
+                  <span style={styles.keyMeta}>
+                    {" "}
+                    · {item.prefix}… · {new Date(item.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  disabled={restLoading}
+                  onClick={() => handleRevokeRestKey(item.id)}
+                  style={styles.revokeBtn}
+                >
+                  Revoke
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p style={styles.hint}>No REST API keys yet.</p>
+        )}
+
+        <form onSubmit={handleCreateRestKey} style={styles.form}>
+          <label style={styles.label}>New key name</label>
+          <input
+            type="text"
+            value={restKeyName}
+            onChange={(e) => setRestKeyName(e.target.value)}
+            placeholder="e.g. CI pipeline"
+            style={styles.input}
+            disabled={restLoading || loadingMeta}
+          />
+          {restError && <div style={styles.error}>{restError}</div>}
+          <button
+            type="submit"
+            disabled={restLoading || loadingMeta || !restKeyName.trim()}
+            style={styles.primaryBtn}
+          >
+            {restLoading ? "Working…" : "Create REST API key"}
+          </button>
         </form>
       </div>
     </div>
@@ -240,5 +364,61 @@ const styles = {
     fontSize: 13,
     textDecoration: "none",
     marginLeft: "auto",
+  },
+  divider: {
+    border: "none",
+    borderTop: "1px solid rgba(255,255,255,.2)",
+    margin: "28px 0",
+  },
+  sectionTitle: { margin: "0 0 8px", fontSize: 18 },
+  code: {
+    fontFamily: "ui-monospace, monospace",
+    fontSize: 12,
+    background: "rgba(0,0,0,.2)",
+    padding: "2px 6px",
+    borderRadius: 4,
+  },
+  keyReveal: {
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 10,
+    background: "rgba(0,0,0,.25)",
+    fontSize: 13,
+    lineHeight: 1.5,
+  },
+  keyValue: {
+    display: "block",
+    marginTop: 8,
+    wordBreak: "break-all",
+    fontFamily: "ui-monospace, monospace",
+    fontSize: 12,
+  },
+  keyList: {
+    listStyle: "none",
+    margin: "0 0 16px",
+    padding: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  keyItem: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    padding: "10px 12px",
+    borderRadius: 10,
+    background: "rgba(0,0,0,.15)",
+    fontSize: 13,
+  },
+  keyMeta: { color: "rgba(255,255,255,0.65)", fontWeight: 400 },
+  revokeBtn: {
+    padding: "6px 10px",
+    borderRadius: 8,
+    border: "1px solid rgba(255,100,100,.4)",
+    background: "transparent",
+    color: "#ffb4b4",
+    cursor: "pointer",
+    flexShrink: 0,
   },
 }

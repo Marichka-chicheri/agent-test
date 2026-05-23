@@ -1,27 +1,36 @@
 """Agent execution loop using Gemini API only."""
 
-import os
+from __future__ import annotations
+
 import asyncio
 import inspect
-from typing import Any, Callable, Dict, Optional
+import os
+import time
+from typing import Any, Callable, Dict, Optional, Union
 
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
+from agent_metrics import agent_metrics
+from approval_manager import (
+    DEFAULT_APPROVAL_TIMEOUT_SEC,
+    approval_manager,
+)
+from logger import add_step, create_run, finish_run, init_db
 from tools import TOOLS, TOOL_DECLARATIONS
-from logger import init_db, create_run, add_step, finish_run
 
 load_dotenv()
 init_db()
 
 DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-MAX_ITER = int(os.getenv("MAX_ITER", 20))
+MAX_ITER = int(os.getenv("MAX_ITER", "20"))
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "").replace(" ", "")
 EMAIL_USERNAME = os.getenv("EMAIL_USERNAME", "").strip()
 IMAP_HOST = os.getenv("IMAP_HOST", "imap.gmail.com").strip()
 
 _clients: Dict[str, genai.Client] = {}
+ToolResult = Union[str, Dict[str, Any]]
 
 
 def _resolve_api_key(api_key: Optional[str]) -> str:
@@ -38,18 +47,21 @@ def _get_client(api_key: Optional[str] = None) -> genai.Client:
     return _clients[key]
 
 
-def execute_tool(name: str, args: Dict[str, Any]):
+async def execute_tool_async(name: str, args: Dict[str, Any]) -> ToolResult:
     if name not in TOOLS:
         return {"error": f"Unknown tool {name}"}
 
     tool = TOOLS[name]
-
     try:
         if inspect.iscoroutinefunction(tool):
-            return asyncio.run(tool(**args))
-        return tool(**args)
-    except Exception as e:
-        return {"error": str(e)}
+            return await tool(**args)
+        return await asyncio.to_thread(tool, **args)
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def execute_tool(name: str, args: Dict[str, Any]) -> ToolResult:
+    return asyncio.run(execute_tool_async(name, args))
 
 
 def prepare_tool_args(tool_name: str, raw_args: Dict[str, Any]) -> Dict[str, Any]:
@@ -74,10 +86,70 @@ def prepare_tool_args(tool_name: str, raw_args: Dict[str, Any]) -> Dict[str, Any
     return dict(raw_args or {})
 
 
-def _record_step(run_id: int, step: dict, on_step: Optional[Callable[[dict], None]]):
+def _tool_succeeded(result: ToolResult) -> bool:
+    if isinstance(result, dict):
+        if result.get("error"):
+            return False
+        if result.get("success") is False:
+            return False
+    return True
+
+
+def _record_step(
+    run_id: int,
+    step: dict,
+    on_step: Optional[Callable[[dict], None]],
+) -> None:
     add_step(run_id, step)
     if on_step:
         on_step(step)
+
+
+def _execute_with_approval(
+    run_id: int,
+    tool_name: str,
+    raw_args: Dict[str, Any],
+    args: Dict[str, Any],
+    on_step: Optional[Callable[[dict], None]],
+) -> ToolResult:
+    pending = approval_manager.request(run_id, tool_name, raw_args)
+    _record_step(
+        run_id,
+        {
+            "type": "approval_pending",
+            "approval_id": pending.id,
+            "tool": tool_name,
+            "args": raw_args,
+        },
+        on_step,
+    )
+
+    approved = approval_manager.wait(
+        pending.id,
+        timeout=DEFAULT_APPROVAL_TIMEOUT_SEC,
+    )
+    if not approved:
+        return {
+            "error": (
+                "Tool execution was denied or timed out waiting for human approval."
+            )
+        }
+
+    started = time.perf_counter()
+    result = execute_tool(tool_name, args)
+    duration_ms = (time.perf_counter() - started) * 1000
+    success = _tool_succeeded(result)
+    error_msg: Optional[str] = None
+    if isinstance(result, dict):
+        error_msg = result.get("error")
+    agent_metrics.record_tool_call(
+        run_id,
+        tool_name,
+        duration_ms,
+        success=success,
+        error=str(error_msg) if error_msg else None,
+    )
+    return result
 
 
 def run_agent(
@@ -98,12 +170,13 @@ def run_agent(
     limit = max_iter if max_iter is not None else MAX_ITER
 
     run_id = create_run(prompt)
-    history = [
-        types.Content(role="user", parts=[types.Part(text=prompt)])
-    ]
+    agent_metrics.start_run(run_id)
+    history = [types.Content(role="user", parts=[types.Part(text=prompt)])]
 
     try:
-        for step in range(limit):
+        for _ in range(limit):
+            agent_metrics.record_iteration(run_id)
+
             response = client.models.generate_content(
                 model=gemini_model,
                 contents=history,
@@ -135,7 +208,13 @@ def run_agent(
                         on_step,
                     )
 
-                    result = execute_tool(tool_name, args)
+                    result = _execute_with_approval(
+                        run_id,
+                        tool_name,
+                        raw_args,
+                        args,
+                        on_step,
+                    )
 
                     _record_step(
                         run_id,
@@ -167,16 +246,24 @@ def run_agent(
                     {"type": "final", "content": final_text},
                     on_step,
                 )
+                metrics_snapshot = agent_metrics.finish_run(run_id)
+                _record_step(
+                    run_id,
+                    {"type": "metrics", "metrics": metrics_snapshot},
+                    on_step,
+                )
                 return final_text
 
         message = "Iteration limit reached"
         finish_run(run_id, message, "error")
         _record_step(run_id, {"type": "error", "message": message}, on_step)
+        agent_metrics.finish_run(run_id)
         return message
 
-    except Exception as e:
-        finish_run(run_id, str(e), "error")
-        _record_step(run_id, {"type": "error", "message": str(e)}, on_step)
+    except Exception as exc:
+        finish_run(run_id, str(exc), "error")
+        _record_step(run_id, {"type": "error", "message": str(exc)}, on_step)
+        agent_metrics.finish_run(run_id)
         raise
 
 
