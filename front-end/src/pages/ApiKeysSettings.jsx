@@ -8,7 +8,6 @@ import { logout } from "../api/api"
 // } from "../api/restApiKeys"
 import { AppNav } from "../components/AppNav"
 import { useAuth } from "../hooks/useAuth"
-import { AppNav } from "../components/AppNav"
 import { ProfileMenu } from "../components/ProfileMenu"
 
 export function ApiKeysSettings() {
@@ -57,7 +56,7 @@ export function ApiKeysSettings() {
     return () => { cancelled = true }
   }, [loadApiKeys, loadRestKeys])
 
-  // ── User info (stored locally) ──────────────────────────────
+  // User info (stored locally)
   const stored = getUserInfo()
   const [username, setUsername] = useState(stored.username || "")
   const [email, setEmail] = useState(stored.email || "")
@@ -69,8 +68,7 @@ export function ApiKeysSettings() {
     setTimeout(() => setUserSaved(false), 2000)
   }
 
-  // ── Gemini API key ───────────────────────────────────────────
-  const [geminiKey, setGeminiKey] = useState("")
+  //Gemini API key
   const [keyLoading, setKeyLoading] = useState(false)
   const [keySuccess, setKeySuccess] = useState("")
   const [keyError, setKeyError] = useState("")
@@ -154,7 +152,6 @@ export function ApiKeysSettings() {
       <div style={styles.scroll}>
         <div style={styles.card}>
 
-          {/* ── USER DATA ───────────────────────────────── */}
           <div style={styles.sectionTitle}>User data</div>
 
           <div style={styles.section}>
@@ -192,7 +189,6 @@ export function ApiKeysSettings() {
             {userSaved ? "Saved ✓" : "Save user data"}
           </button>
 
-          {/* ── GEMINI API KEY ──────────────────────────── */}
           <div style={styles.sectionTitle}>API Keys</div>
 
           <div style={styles.section}>
