@@ -52,7 +52,7 @@ SIMPLE_JWT = {
 }
 
 # Default Gemini model (only provider supported by this app)
-GEMINI_MODEL = 'gemini-2.0-flash'
+GEMINI_MODEL = 'gemini-2.5-flash'
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",

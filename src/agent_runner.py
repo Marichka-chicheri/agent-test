@@ -15,7 +15,7 @@ from logger import init_db, create_run, add_step, finish_run
 load_dotenv()
 init_db()
 
-DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 MAX_ITER = int(os.getenv("MAX_ITER", 20))
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "").replace(" ", "")
 EMAIL_USERNAME = os.getenv("EMAIL_USERNAME", "").strip()
