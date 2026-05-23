@@ -1,7 +1,7 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
 
-from .models import Agent, AgentRun
+from .models import Agent, AgentRun, RestAPIKey
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -67,6 +67,24 @@ class AgentSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data.setdefault("tools", [])
         return super().create(validated_data)
+
+
+class RestAPIKeySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RestAPIKey
+        fields = [
+            "id",
+            "name",
+            "prefix",
+            "is_active",
+            "created_at",
+            "last_used_at",
+        ]
+        read_only_fields = fields
+
+
+class RestAPIKeyCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=100, trim_whitespace=True)
 
 
 class AgentRunSerializer(serializers.ModelSerializer):

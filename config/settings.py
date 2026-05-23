@@ -31,6 +31,7 @@ DATABASES = {
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'accounts.authentication.RestAPIKeyAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
@@ -53,6 +54,9 @@ SIMPLE_JWT = {
 
 # Default Gemini model (only provider supported by this app)
 GEMINI_MODEL = 'gemini-2.0-flash'
+
+# Max REST API keys (Authorization: Api-Key …) per user
+MAX_REST_API_KEYS_PER_USER = 10
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",

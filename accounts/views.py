@@ -1,5 +1,6 @@
 import threading
 
+from django.conf import settings
 from django.contrib.auth import authenticate
 from django.shortcuts import get_object_or_404
 
@@ -10,12 +11,15 @@ from rest_framework import status
 
 from .agent_executor import execute_agent_run
 from .auth_utils import auth_response, get_api_keys_payload
-from .models import Agent, AgentRun, UserAPIKey
+from .models import Agent, AgentRun, RestAPIKey, UserAPIKey
+from .rest_api_key_utils import generate_rest_api_key, hash_rest_api_key, key_display_prefix
 from .serializers import (
     RegisterSerializer,
     AgentSerializer,
     AgentRunSerializer,
     UserAPIKeySerializer,
+    RestAPIKeySerializer,
+    RestAPIKeyCreateSerializer,
 )
 
 
@@ -67,6 +71,49 @@ def api_keys(request):
         record.save(update_fields=["gemini_api_key_encrypted", "updated_at"])
 
     return Response(get_api_keys_payload(request.user))
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def rest_api_keys(request):
+    if request.method == "GET":
+        queryset = RestAPIKey.objects.filter(user=request.user, is_active=True)
+        serializer = RestAPIKeySerializer(queryset, many=True)
+        return Response(serializer.data)
+
+    serializer = RestAPIKeyCreateSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    limit = getattr(settings, "MAX_REST_API_KEYS_PER_USER", 10)
+    active_count = RestAPIKey.objects.filter(user=request.user, is_active=True).count()
+    if active_count >= limit:
+        return Response(
+            {"error": f"Maximum of {limit} active API keys allowed."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    raw_key = generate_rest_api_key()
+    record = RestAPIKey.objects.create(
+        user=request.user,
+        name=serializer.validated_data["name"],
+        prefix=key_display_prefix(raw_key),
+        key_hash=hash_rest_api_key(raw_key),
+    )
+
+    payload = RestAPIKeySerializer(record).data
+    payload["key"] = raw_key
+    return Response(payload, status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def rest_api_key_revoke(request, key_id):
+    record = get_object_or_404(RestAPIKey, pk=key_id, user=request.user)
+    if record.is_active:
+        record.is_active = False
+        record.save(update_fields=["is_active"])
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @api_view(["GET", "POST"])
