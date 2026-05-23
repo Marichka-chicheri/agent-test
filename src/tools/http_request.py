@@ -1,33 +1,37 @@
-import httpx
+"""Async HTTP client tool."""
+
+from __future__ import annotations
+
 import json
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
+import httpx
 
 
-async def http_request(url: str, method: str = "GET", payload: Optional[Dict[str, Any]] = None) -> str:
-    """
-    Make an HTTP async request (GET or POST) to an external API or URL.
-    """
-    method = method.upper()
-    if method not in ["GET", "POST"]:
+async def http_request(
+    url: str,
+    method: str = "GET",
+    payload: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Make an HTTP GET or POST request to an external API or URL."""
+    method_upper = method.upper()
+    if method_upper not in ("GET", "POST"):
         return "Error: Unsupported HTTP method. Only GET and POST are allowed."
 
     async with httpx.AsyncClient() as client:
         try:
-            if method == "GET":
+            if method_upper == "GET":
                 response = await client.get(url, timeout=10.0)
-            else:  # POST
+            else:
                 response = await client.post(url, json=payload, timeout=10.0)
 
-            # Форматуємо результат
             status = response.status_code
             try:
-                # Намагаємось розпарсити як JSON, щоб відповідь була чистішою
                 body = response.json()
                 body_str = json.dumps(body, ensure_ascii=False, indent=2)
             except ValueError:
-                body_str = response.text[:1000]  # Обмежуємо довжину тексту, якщо там HTML
+                body_str = response.text[:1000]
 
             return f"Status: {status}\nResponse Body:\n{body_str}"
-
-        except Exception as e:
-            return f"HTTP request failed: {str(e)}"
+        except Exception as exc:
+            return f"HTTP request failed: {exc}"
