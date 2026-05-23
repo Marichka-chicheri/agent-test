@@ -1,4 +1,4 @@
-import { API_URL } from "./config"
+import { API_URL, resolveApiUrl } from "./config"
 import { formatApiError } from "./errors"
 
 export { API_URL }
@@ -87,7 +87,7 @@ async function refreshAccessToken() {
     throw new Error("Session expired. Please sign in again.")
   }
 
-  const res = await fetch(`${API_URL}/token/refresh/`, {
+  const res = await fetch(resolveApiUrl("/token/refresh/"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh }),
@@ -106,8 +106,9 @@ async function refreshAccessToken() {
 
 async function fetchWithAuth(url, options = {}) {
   const token = getAccessToken()
+  const requestUrl = resolveApiUrl(url)
 
-  return fetch(`${API_URL}${url}`, {
+  return fetch(requestUrl, {
     ...options,
     headers: {
       "Content-Type": "application/json",

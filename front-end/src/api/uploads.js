@@ -1,10 +1,11 @@
-import { API_URL, getAccessToken } from "./api"
+import { getAccessToken } from "./api"
+import { resolveApiUrl } from "./config"
 import { formatApiError } from "./errors"
 import { parseJsonResponse } from "./http"
 
 export async function fetchAppConfig() {
   const token = getAccessToken()
-  const res = await fetch(`${API_URL}/config/`, {
+  const res = await fetch(resolveApiUrl("/config/"), {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
   return parseJsonResponse(res)
@@ -17,7 +18,7 @@ export async function uploadFiles(files, { onProgress } = {}) {
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    xhr.open("POST", `${API_URL}/uploads/`)
+    xhr.open("POST", resolveApiUrl("/uploads/"))
     if (token) {
       xhr.setRequestHeader("Authorization", `Bearer ${token}`)
     }

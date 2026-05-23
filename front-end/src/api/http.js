@@ -1,5 +1,7 @@
 import { formatApiError } from "./errors"
 
+const DEFAULT_API_HOST = "https://literal-agentic-studio.onrender.com"
+
 export async function parseJsonResponse(res) {
   const contentType = res.headers.get("content-type") || ""
   const isJson = contentType.includes("application/json")
@@ -15,8 +17,14 @@ export async function parseJsonResponse(res) {
       )
     }
     if (!res.ok) {
+      const isHtml = /<!\s*doctype\s+html/i.test(text) || /<html[\s>]/i.test(text)
+      if (isHtml && res.status === 404) {
+        throw new Error(
+          `API route not found (404). Deploy the latest backend or set VITE_API_URL to your Django /api base (e.g. ${DEFAULT_API_HOST}/api).`
+        )
+      }
       throw new Error(
-        text.includes("<!DOCTYPE html>")
+        isHtml
           ? `Server error (${res.status}). Check Django logs.`
           : text.slice(0, 300) || `Request failed (${res.status})`
       )

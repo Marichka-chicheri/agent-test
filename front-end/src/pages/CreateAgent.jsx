@@ -1,6 +1,15 @@
-import { useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
-import { createAgent, getAvailableTools } from "../api/agents"
+import { useCallback, useEffect, useState } from "react"
+import { useNavigate, useSearchParams } from "react-router-dom"
+import {
+  createAgent,
+  fetchAvailableTools,
+  getAgent,
+  updateAgent,
+} from "../api/agents"
+import {
+  agentToolsToSelection,
+  selectionToAgentTools,
+} from "../api/toolsSelection"
 import { AppNav } from "../components/AppNav"
 import { ProfileMenu } from "../components/ProfileMenu"
 import { useAuth } from "../hooks/useAuth"
@@ -38,6 +47,9 @@ function validateConfig(config) {
 
 const CreateAgent = () => {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const editAgentId = searchParams.get("agentId")
+  const isEditMode = Boolean(editAgentId)
   const { apiKeys } = useAuth()
 
   const [config, setConfig] = useState(INITIAL_CONFIG)
@@ -45,43 +57,89 @@ const CreateAgent = () => {
   const [availableTools, setAvailableTools] = useState([])
   const [toolsLoading, setToolsLoading] = useState(true)
   const [toolsError, setToolsError] = useState("")
+  const [toolsUsingFallback, setToolsUsingFallback] = useState(false)
   const [selectedTools, setSelectedTools] = useState(new Set())
+  const [agentLoading, setAgentLoading] = useState(isEditMode)
+  const [agentLoadError, setAgentLoadError] = useState("")
   const [loading, setLoading] = useState(false)
   const [fieldErrors, setFieldErrors] = useState({})
   const [submitError, setSubmitError] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
 
+  const applyAgentToForm = useCallback((agent, tools) => {
+    setConfig({
+      name: agent.name || "",
+      role: agent.role || "",
+      backstory: agent.backstory || "",
+      additional_context: agent.additional_context || "",
+      maxSteps: agent.max_iterations ?? 10,
+      forbiddenTopics: agent.forbidden_topics || "",
+    })
+    setMaxStepsInput(String(agent.max_iterations ?? 10))
+    setSelectedTools(agentToolsToSelection(agent.tools, tools))
+  }, [])
+
   useEffect(() => {
     let cancelled = false
-    getAvailableTools()
-      .then((tools) => {
-        if (!cancelled) {
-          setAvailableTools(Array.isArray(tools) ? tools : [])
-          setToolsError("")
+
+    async function loadTools() {
+      try {
+        setToolsLoading(true)
+        setToolsError("")
+        const { tools, fromFallback } = await fetchAvailableTools()
+        if (cancelled) return
+        setAvailableTools(tools)
+        setToolsUsingFallback(fromFallback)
+
+        if (isEditMode && editAgentId) {
+          try {
+            setAgentLoading(true)
+            setAgentLoadError("")
+            const agent = await getAgent(editAgentId)
+            if (cancelled) return
+            applyAgentToForm(agent, tools)
+          } catch (err) {
+            if (!cancelled) {
+              console.error("[constructor] Failed to load agent", err)
+              setAgentLoadError(err.message || "Failed to load agent")
+            }
+          } finally {
+            if (!cancelled) setAgentLoading(false)
+          }
+        } else {
+          setSelectedTools(new Set(tools.map((t) => t.id)))
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         if (!cancelled) {
+          console.error("[constructor] Failed to load tools", err)
           setToolsError(err.message || "Failed to load tools")
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setToolsLoading(false)
-      })
+      }
+    }
+
+    loadTools()
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [applyAgentToForm, editAgentId, isEditMode])
 
   const allSelected =
     availableTools.length > 0 &&
     selectedTools.size === availableTools.length
   const noneSelected = selectedTools.size === 0
+  const allToolsAllowed = noneSelected || allSelected
 
   function toggleTool(id) {
-    setSelectedTools(prev => {
+    if (!id) return
+    setSelectedTools((prev) => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
       return next
     })
   }
@@ -90,7 +148,7 @@ const CreateAgent = () => {
     if (allSelected) {
       setSelectedTools(new Set())
     } else {
-      setSelectedTools(new Set(availableTools.map(t => t.id)))
+      setSelectedTools(new Set(availableTools.map((t) => t.id)))
     }
   }
 
@@ -107,31 +165,35 @@ const CreateAgent = () => {
     setFieldErrors(errors)
     if (Object.keys(errors).length > 0) return
 
+    const payload = {
+      name: config.name.trim(),
+      role: config.role.trim(),
+      backstory: config.backstory.trim(),
+      additional_context: config.additional_context.trim(),
+      max_iterations: config.maxSteps,
+      forbidden_topics: config.forbiddenTopics.trim(),
+      tools: selectionToAgentTools(selectedTools, availableTools),
+    }
+
     try {
       setLoading(true)
 
-      const payload = {
-        name: config.name.trim(),
-        role: config.role.trim(),
-        backstory: config.backstory.trim(),
-        additional_context: config.additional_context.trim(),
-        max_iterations: config.maxSteps,
-        forbidden_topics: config.forbiddenTopics.trim(),
-        // empty array means "use all tools" on the backend
-        tools: noneSelected ? [] : Array.from(selectedTools),
+      if (isEditMode && editAgentId) {
+        await updateAgent(editAgentId, payload)
+        setSuccessMessage("Agent updated. Opening Live view…")
+      } else {
+        await createAgent(payload)
+        setSuccessMessage("Agent saved. Opening Live view…")
+        setConfig(INITIAL_CONFIG)
+        setMaxStepsInput("10")
+        setSelectedTools(new Set(availableTools.map((t) => t.id)))
+        setFieldErrors({})
       }
-
-      await createAgent(payload)
-
-      setSuccessMessage("Agent saved. Opening Live view…")
-      setConfig(INITIAL_CONFIG)
-      setMaxStepsInput("10")
-      setSelectedTools(new Set())
-      setFieldErrors({})
 
       setTimeout(() => navigate("/live"), 600)
     } catch (err) {
-      setSubmitError(err.message || "Failed to create agent")
+      console.error("[constructor] Save failed", err)
+      setSubmitError(err.message || "Failed to save agent")
     } finally {
       setLoading(false)
     }
@@ -141,7 +203,9 @@ const CreateAgent = () => {
     config.name.trim() &&
     config.role.trim() &&
     config.backstory.trim() &&
-    !loading
+    !loading &&
+    !toolsLoading &&
+    !agentLoading
 
   return (
     <div style={styles.root}>
@@ -149,7 +213,7 @@ const CreateAgent = () => {
         <div style={styles.logoBadge}>
           Agentic<span style={{ color: "#b3f0ff" }}>Studio</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <AppNav />
           <ProfileMenu />
         </div>
@@ -158,10 +222,7 @@ const CreateAgent = () => {
       {!apiKeys.gemini_configured && (
         <div style={styles.warnBanner}>
           Gemini API key required.{" "}
-          <span
-            style={styles.warnLink}
-            onClick={() => navigate("/settings")}
-          >
+          <span style={styles.warnLink} onClick={() => navigate("/settings")}>
             Open Settings
           </span>
         </div>
@@ -170,8 +231,13 @@ const CreateAgent = () => {
       <div style={styles.scroll}>
         <div style={styles.card}>
           <p style={styles.providerNote}>
-            Powered by <strong>Google Gemini</strong> only.
+            {isEditMode ? "Edit agent" : "Create agent"} — powered by{" "}
+            <strong>Google Gemini</strong> only.
           </p>
+
+          {agentLoadError && (
+            <div style={styles.submitError} role="alert">{agentLoadError}</div>
+          )}
 
           <div style={styles.section}>
             <label style={styles.label}>Name</label>
@@ -189,7 +255,7 @@ const CreateAgent = () => {
                   ? "1px solid rgba(255,120,120,0.6)"
                   : "none",
               }}
-              disabled={loading}
+              disabled={loading || agentLoading}
               placeholder="Research Assistant"
             />
             {fieldErrors.name && (
@@ -213,7 +279,7 @@ const CreateAgent = () => {
                   ? "1px solid rgba(255,120,120,0.6)"
                   : "none",
               }}
-              disabled={loading}
+              disabled={loading || agentLoading}
               placeholder="Senior Software Engineer"
             />
             {fieldErrors.role && (
@@ -238,7 +304,7 @@ const CreateAgent = () => {
                   ? "1px solid rgba(255,120,120,0.6)"
                   : "none",
               }}
-              disabled={loading}
+              disabled={loading || agentLoading}
               placeholder="10 years of experience building SaaS products…"
             />
             {fieldErrors.backstory && (
@@ -255,7 +321,7 @@ const CreateAgent = () => {
                 setConfig({ ...config, additional_context: e.target.value })
               }
               style={styles.textarea}
-              disabled={loading}
+              disabled={loading || agentLoading}
               placeholder="Behavioral guidelines, tone, constraints…"
             />
             <span style={styles.hint}>
@@ -271,7 +337,7 @@ const CreateAgent = () => {
               max={20}
               value={maxStepsInput}
               style={{ ...styles.input, width: 120 }}
-              disabled={loading}
+              disabled={loading || agentLoading}
               onChange={(e) => setMaxStepsInput(e.target.value)}
               onBlur={() => {
                 const val = Math.min(
@@ -290,7 +356,7 @@ const CreateAgent = () => {
               value={config.forbiddenTopics}
               placeholder="politics, violence…"
               style={styles.input}
-              disabled={loading}
+              disabled={loading || agentLoading}
               onChange={(e) =>
                 setConfig({ ...config, forbiddenTopics: e.target.value })
               }
@@ -299,31 +365,52 @@ const CreateAgent = () => {
 
           <div style={styles.section}>
             <div style={styles.toolsHeader}>
-              <label style={styles.label}>Tools</label>
+              <label style={styles.label}>Allowed tools</label>
               <button
                 type="button"
                 onClick={toggleAll}
-                disabled={loading}
+                disabled={loading || toolsLoading || !availableTools.length}
                 style={styles.selectAllBtn}
               >
                 {allSelected ? "Deselect all" : "Select all"}
               </button>
             </div>
 
-            {toolsError && (
-              <div style={styles.submitError}>{toolsError}</div>
+            {toolsUsingFallback && !toolsError && (
+              <div style={styles.toolsWarn} role="status">
+                Tool list loaded from app defaults. Redeploy the API so{" "}
+                <code style={styles.inlineCode}>GET /api/tools/</code> is available.
+              </div>
             )}
-            {toolsLoading && (
+            {toolsError && (
+              <div style={styles.submitError} role="alert">{toolsError}</div>
+            )}
+            {(toolsLoading || agentLoading) && (
               <span style={styles.hint}>Loading tools…</span>
             )}
 
+            {!toolsLoading && !toolsError && availableTools.length === 0 && (
+              <span style={styles.hint}>
+                No tools available from the server. Check API connection or try again later.
+              </span>
+            )}
+
             <div style={styles.toolsGrid}>
-              {availableTools.map(tool => {
+              {availableTools.map((tool) => {
                 const checked = selectedTools.has(tool.id)
                 return (
                   <div
                     key={tool.id}
-                    onClick={() => !loading && toggleTool(tool.id)}
+                    role="checkbox"
+                    aria-checked={checked}
+                    tabIndex={0}
+                    onClick={() => !loading && !agentLoading && toggleTool(tool.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        toggleTool(tool.id)
+                      }
+                    }}
                     style={{
                       ...styles.toolCard,
                       background: checked
@@ -332,39 +419,53 @@ const CreateAgent = () => {
                       border: checked
                         ? "1px solid rgba(110,231,183,0.55)"
                         : "1px solid rgba(255,255,255,0.1)",
-                      cursor: loading ? "not-allowed" : "pointer",
-                      opacity: loading ? 0.6 : 1,
+                      cursor: loading || agentLoading ? "not-allowed" : "pointer",
+                      opacity: loading || agentLoading ? 0.6 : 1,
                     }}
                   >
                     <div style={styles.toolCheckRow}>
                       <span style={styles.toolLabel}>{tool.label}</span>
-                      <span style={{
-                        ...styles.toolCheckbox,
-                        background: checked ? "#6ee7b7" : "rgba(255,255,255,0.1)",
-                        border: checked ? "1px solid #6ee7b7" : "1px solid rgba(255,255,255,0.25)",
-                      }}>
+                      <span
+                        style={{
+                          ...styles.toolCheckbox,
+                          background: checked ? "#6ee7b7" : "rgba(255,255,255,0.1)",
+                          border: checked
+                            ? "1px solid #6ee7b7"
+                            : "1px solid rgba(255,255,255,0.25)",
+                        }}
+                      >
                         {checked && <span style={styles.checkmark}>✓</span>}
                       </span>
                     </div>
-                    <div style={styles.toolDesc}>{tool.desc}</div>
+                    {tool.desc ? (
+                      <div style={styles.toolDesc}>{tool.desc}</div>
+                    ) : null}
                   </div>
                 )
               })}
             </div>
 
-            {noneSelected && (
-              <span style={styles.hint}>No tools selected — all tools will be available to the agent.</span>
+            {allToolsAllowed && availableTools.length > 0 && (
+              <span style={styles.hint}>
+                All tools selected — the agent may use every tool enabled in the catalog.
+              </span>
+            )}
+            {!allToolsAllowed && selectedTools.size > 0 && (
+              <span style={styles.hint}>
+                {selectedTools.size} of {availableTools.length} tools selected.
+              </span>
             )}
           </div>
 
-          {submitError && <div style={styles.submitError}>{submitError}</div>}
+          {submitError && <div style={styles.submitError} role="alert">{submitError}</div>}
           {successMessage && (
-            <div style={styles.successMessage}>{successMessage}</div>
+            <div style={styles.successMessage} role="status">{successMessage}</div>
           )}
         </div>
       </div>
 
       <button
+        type="button"
         disabled={!canSave}
         onClick={handleSave}
         style={{
@@ -373,7 +474,7 @@ const CreateAgent = () => {
           cursor: loading ? "wait" : "pointer",
         }}
       >
-        {loading ? "Saving…" : "Save agent"}
+        {loading ? "Saving…" : isEditMode ? "Update agent" : "Save agent"}
       </button>
     </div>
   )
@@ -387,21 +488,26 @@ const styles = {
     padding: 12,
     gap: 10,
     boxSizing: "border-box",
-    background:
-      "linear-gradient(160deg,#5ececa 0%,#3a9fbf 40%,#1a6080 100%)",
+    background: "linear-gradient(160deg,#5ececa 0%,#3a9fbf 40%,#1a6080 100%)",
     color: "#fff",
     fontFamily: "-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif",
   },
   topBar: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '6px 8px', flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "6px 8px",
+    flexShrink: 0,
   },
   logoBadge: {
-    fontWeight: 700, fontSize: 15, color: '#fff',
-    background: 'rgba(255,255,255,0.15)',
-    backdropFilter: 'blur(8px)',
-    border: '1px solid rgba(255,255,255,0.2)',
-    borderRadius: 12, padding: '7px 16px',
+    fontWeight: 700,
+    fontSize: 15,
+    color: "#fff",
+    background: "rgba(255,255,255,0.15)",
+    backdropFilter: "blur(8px)",
+    border: "1px solid rgba(255,255,255,0.2)",
+    borderRadius: 12,
+    padding: "7px 16px",
   },
   warnBanner: {
     fontSize: 13,
@@ -410,17 +516,9 @@ const styles = {
     background: "rgba(255,180,50,0.15)",
     border: "1px solid rgba(255,200,80,0.35)",
   },
-  warnLink: {
-    textDecoration: "underline",
-    cursor: "pointer",
-    fontWeight: 700,
-  },
+  warnLink: { textDecoration: "underline", cursor: "pointer", fontWeight: 700 },
   scroll: { flex: 1, overflowY: "auto" },
-  card: {
-    padding: 16,
-    borderRadius: 16,
-    background: "rgba(255,255,255,.08)",
-  },
+  card: { padding: 16, borderRadius: 16, background: "rgba(255,255,255,.08)" },
   providerNote: {
     fontSize: 13,
     color: "rgba(255,255,255,0.75)",
@@ -454,11 +552,20 @@ const styles = {
     boxSizing: "border-box",
     resize: "vertical",
   },
-  fieldError: {
-    display: "block",
-    marginTop: 6,
+  fieldError: { display: "block", marginTop: 6, fontSize: 12, color: "#ffb4b4" },
+  toolsWarn: {
     fontSize: 12,
-    color: "#ffb4b4",
+    color: "#fde68a",
+    background: "rgba(120,80,0,0.25)",
+    border: "1px solid rgba(255,200,80,0.35)",
+    borderRadius: 10,
+    padding: "10px 12px",
+    marginBottom: 8,
+    lineHeight: 1.5,
+  },
+  inlineCode: {
+    fontFamily: "ui-monospace, monospace",
+    fontSize: 11,
   },
   submitError: {
     fontSize: 13,
@@ -467,6 +574,7 @@ const styles = {
     border: "1px solid rgba(255,120,120,0.35)",
     borderRadius: 10,
     padding: "10px 12px",
+    marginBottom: 8,
   },
   successMessage: {
     fontSize: 13,
@@ -502,7 +610,7 @@ const styles = {
   },
   toolsGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
+    gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
     gap: 8,
   },
   toolCard: {
@@ -517,13 +625,7 @@ const styles = {
     gap: 6,
     marginBottom: 4,
   },
-
-  toolLabel: {
-    fontSize: 12,
-    fontWeight: 700,
-    color: "#fff",
-    flex: 1,
-  },
+  toolLabel: { fontSize: 12, fontWeight: 700, color: "#fff", flex: 1 },
   toolCheckbox: {
     width: 16,
     height: 16,
@@ -534,17 +636,8 @@ const styles = {
     justifyContent: "center",
     transition: "background 0.15s, border 0.15s",
   },
-  checkmark: {
-    fontSize: 10,
-    color: "#065f46",
-    fontWeight: 700,
-    lineHeight: 1,
-  },
-  toolDesc: {
-    fontSize: 10,
-    color: "rgba(255,255,255,0.5)",
-    lineHeight: 1.4,
-  },
+  checkmark: { fontSize: 10, color: "#065f46", fontWeight: 700, lineHeight: 1 },
+  toolDesc: { fontSize: 10, color: "rgba(255,255,255,0.5)", lineHeight: 1.4 },
 }
 
 export default CreateAgent

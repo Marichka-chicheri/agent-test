@@ -11,6 +11,7 @@ from .views import (
     rest_api_key_revoke,
     tools_catalog,
     agents,
+    agent_detail,
     agent_run_start,
     agent_run_detail,
     tool_approval_resolve,
@@ -29,6 +30,7 @@ urlpatterns = [
     path("api/rest-keys/<int:key_id>/", rest_api_key_revoke),
     path("api/tools/", tools_catalog),
     path("api/agents/", agents),
+    path("api/agents/<int:agent_id>/", agent_detail),
     path("api/agents/<int:agent_id>/run/", agent_run_start),
     path("api/runs/<int:run_id>/", agent_run_detail),
     path(

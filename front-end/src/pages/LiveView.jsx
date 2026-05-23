@@ -187,9 +187,20 @@ export function LiveView() {
                 }}
               >
                 <div style={styles.agentDot} />
-                <div>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={styles.agentName}>{agent.name}</div>
                 </div>
+                <button
+                  type="button"
+                  title="Edit agent tools and settings"
+                  style={styles.agentEditBtn}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    navigate(`/constructor?agentId=${agent.id}`)
+                  }}
+                >
+                  Edit
+                </button>
               </div>
             ))}
           </div>
@@ -382,6 +393,17 @@ const styles = {
   agentItem: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 10, cursor: 'pointer', transition: 'all 0.15s' },
   agentDot: { width: 6, height: 6, borderRadius: '50%', background: '#6ee7b7', flexShrink: 0 },
   agentName: { fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.9)' },
+  agentEditBtn: {
+    flexShrink: 0,
+    padding: '2px 6px',
+    fontSize: 10,
+    fontWeight: 600,
+    borderRadius: 6,
+    border: '1px solid rgba(255,255,255,0.25)',
+    background: 'rgba(255,255,255,0.08)',
+    color: 'rgba(255,255,255,0.85)',
+    cursor: 'pointer',
+  },
   newAgentBtn: { marginTop: 'auto', padding: '8px 10px', background: 'rgba(255,255,255,0.06)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: 10, fontSize: 12, color: 'rgba(255,255,255,0.5)', cursor: 'pointer', textAlign: 'center' },
   main: { flex: 1, display: 'flex', flexDirection: 'column', gap: 10, overflow: 'hidden' },
   feed: {

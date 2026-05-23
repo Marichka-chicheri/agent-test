@@ -215,7 +215,9 @@ def rest_api_key_revoke(request, key_id):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def tools_catalog(request):
-    return Response(get_constructor_tools())
+    from .tool_utils import get_constructor_tools_payload
+
+    return Response(get_constructor_tools_payload())
 
 
 @api_view(["GET", "POST"])
@@ -232,6 +234,23 @@ def agents(request):
 
     queryset = Agent.objects.filter(owner=request.user)
     serializer = AgentSerializer(queryset, many=True)
+    return Response(serializer.data)
+
+
+@api_view(["GET", "PATCH", "PUT"])
+@permission_classes([IsAuthenticated])
+def agent_detail(request, agent_id: int):
+    agent = get_object_or_404(Agent, pk=agent_id, owner=request.user)
+
+    if request.method == "GET":
+        serializer = AgentSerializer(agent)
+        return Response(serializer.data)
+
+    serializer = AgentSerializer(agent, data=request.data, partial=True)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    serializer.save()
     return Response(serializer.data)
 
 
