@@ -27,9 +27,6 @@ export function ProfileMenu() {
               ? `✓ ${apiKeys.gemini_key_hint || "set"}`
               : "not set"}
           </div>
-          <Link to="/settings" style={styles.popupLink} onClick={() => setOpen(false)}>
-            API Keys
-          </Link>
           <div style={styles.popupItem} onClick={handleLogout}>
             Logout
           </div>

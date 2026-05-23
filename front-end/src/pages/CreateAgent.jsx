@@ -5,6 +5,14 @@ import { AppNav } from "../components/AppNav"
 import { ProfileMenu } from "../components/ProfileMenu"
 import { useAuth } from "../hooks/useAuth"
 
+const AVAILABLE_TOOLS = [
+  { id: "web_search",       label: "Web Search",     desc: "Search the web for up-to-date info"},
+  { id: "http_request",     label: "HTTP Request",   desc: "Send GET / POST requests"},
+  { id: "run_python",       label: "Run Python",     desc: "Execute Python code snippets"},
+  { id: "read_email_inbox", label: "Read Email",     desc: "Read emails from IMAP inbox"},
+  { id: "read_document",    label: "Read Document",  desc: "Parse PDF, DOCX, XLSX, TXT…"},
+]
+
 const INITIAL_CONFIG = {
   name: "",
   role: "",
@@ -42,10 +50,30 @@ const CreateAgent = () => {
 
   const [config, setConfig] = useState(INITIAL_CONFIG)
   const [maxStepsInput, setMaxStepsInput] = useState("10")
+  const [selectedTools, setSelectedTools] = useState(new Set())
   const [loading, setLoading] = useState(false)
   const [fieldErrors, setFieldErrors] = useState({})
   const [submitError, setSubmitError] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
+
+  const allSelected = selectedTools.size === AVAILABLE_TOOLS.length
+  const noneSelected = selectedTools.size === 0
+
+  function toggleTool(id) {
+    setSelectedTools(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelectedTools(new Set())
+    } else {
+      setSelectedTools(new Set(AVAILABLE_TOOLS.map(t => t.id)))
+    }
+  }
 
   async function handleSave() {
     setSubmitError("")
@@ -70,7 +98,8 @@ const CreateAgent = () => {
         additional_context: config.additional_context.trim(),
         max_iterations: config.maxSteps,
         forbidden_topics: config.forbiddenTopics.trim(),
-        tools: [],
+        // empty array means "use all tools" on the backend
+        tools: noneSelected ? [] : Array.from(selectedTools),
       }
 
       await createAgent(payload)
@@ -78,6 +107,7 @@ const CreateAgent = () => {
       setSuccessMessage("Agent saved. Opening Live view…")
       setConfig(INITIAL_CONFIG)
       setMaxStepsInput("10")
+      setSelectedTools(new Set())
       setFieldErrors({})
 
       setTimeout(() => navigate("/live"), 600)
@@ -100,8 +130,10 @@ const CreateAgent = () => {
         <div style={styles.logoBadge}>
           Agentic<span style={{ color: "#b3f0ff" }}>Studio</span>
         </div>
-        <AppNav />
-        <ProfileMenu />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <AppNav />
+          <ProfileMenu />
+        </div>
       </div>
 
       {!apiKeys.gemini_configured && (
@@ -246,6 +278,59 @@ const CreateAgent = () => {
             />
           </div>
 
+          <div style={styles.section}>
+            <div style={styles.toolsHeader}>
+              <label style={styles.label}>Tools</label>
+              <button
+                type="button"
+                onClick={toggleAll}
+                disabled={loading}
+                style={styles.selectAllBtn}
+              >
+                {allSelected ? "Deselect all" : "Select all"}
+              </button>
+            </div>
+
+            <div style={styles.toolsGrid}>
+              {AVAILABLE_TOOLS.map(tool => {
+                const checked = selectedTools.has(tool.id)
+                return (
+                  <div
+                    key={tool.id}
+                    onClick={() => !loading && toggleTool(tool.id)}
+                    style={{
+                      ...styles.toolCard,
+                      background: checked
+                        ? "rgba(80,200,180,0.18)"
+                        : "rgba(0,0,0,0.18)",
+                      border: checked
+                        ? "1px solid rgba(110,231,183,0.55)"
+                        : "1px solid rgba(255,255,255,0.1)",
+                      cursor: loading ? "not-allowed" : "pointer",
+                      opacity: loading ? 0.6 : 1,
+                    }}
+                  >
+                    <div style={styles.toolCheckRow}>
+                      <span style={styles.toolLabel}>{tool.label}</span>
+                      <span style={{
+                        ...styles.toolCheckbox,
+                        background: checked ? "#6ee7b7" : "rgba(255,255,255,0.1)",
+                        border: checked ? "1px solid #6ee7b7" : "1px solid rgba(255,255,255,0.25)",
+                      }}>
+                        {checked && <span style={styles.checkmark}>✓</span>}
+                      </span>
+                    </div>
+                    <div style={styles.toolDesc}>{tool.desc}</div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {noneSelected && (
+              <span style={styles.hint}>No tools selected — all tools will be available to the agent.</span>
+            )}
+          </div>
+
           {submitError && <div style={styles.submitError}>{submitError}</div>}
           {successMessage && (
             <div style={styles.successMessage}>{successMessage}</div>
@@ -282,16 +367,15 @@ const styles = {
     fontFamily: "-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif",
   },
   topBar: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '6px 8px', flexShrink: 0,
   },
   logoBadge: {
-    padding: "8px 16px",
-    borderRadius: 12,
-    background: "rgba(255,255,255,.15)",
-    fontWeight: 700,
+    fontWeight: 700, fontSize: 15, color: '#fff',
+    background: 'rgba(255,255,255,0.15)',
+    backdropFilter: 'blur(8px)',
+    border: '1px solid rgba(255,255,255,0.2)',
+    borderRadius: 12, padding: '7px 16px',
   },
   warnBanner: {
     fontSize: 13,
@@ -373,6 +457,67 @@ const styles = {
     fontWeight: 700,
     color: "#fff",
     background: "rgba(255,255,255,.2)",
+  },
+  toolsHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  selectAllBtn: {
+    padding: "4px 12px",
+    borderRadius: 8,
+    border: "1px solid rgba(255,255,255,0.2)",
+    background: "rgba(255,255,255,0.1)",
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: "pointer",
+  },
+  toolsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: 8,
+  },
+  toolCard: {
+    borderRadius: 10,
+    padding: "10px 10px",
+    transition: "background 0.15s, border 0.15s",
+    userSelect: "none",
+  },
+  toolCheckRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 4,
+  },
+
+  toolLabel: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#fff",
+    flex: 1,
+  },
+  toolCheckbox: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    transition: "background 0.15s, border 0.15s",
+  },
+  checkmark: {
+    fontSize: 10,
+    color: "#065f46",
+    fontWeight: 700,
+    lineHeight: 1,
+  },
+  toolDesc: {
+    fontSize: 10,
+    color: "rgba(255,255,255,0.5)",
+    lineHeight: 1.4,
   },
 }
 

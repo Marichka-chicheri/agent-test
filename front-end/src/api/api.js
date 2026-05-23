@@ -4,6 +4,20 @@ import { formatApiError } from "./errors"
 export { API_URL }
 
 const API_KEYS_STORAGE_KEY = "api_keys"
+const USER_INFO_KEY = "user_info"
+
+export function setUserInfo({ username = "", email = "" }) {
+  localStorage.setItem(USER_INFO_KEY, JSON.stringify({ username, email }))
+}
+
+export function getUserInfo() {
+  try {
+    const raw = localStorage.getItem(USER_INFO_KEY)
+    return raw ? JSON.parse(raw) : { username: "", email: "" }
+  } catch {
+    return { username: "", email: "" }
+  }
+}
 
 export function setTokens(data) {
   if (data.access) {
@@ -52,6 +66,7 @@ export function logout() {
   localStorage.removeItem("access")
   localStorage.removeItem("refresh")
   localStorage.removeItem(API_KEYS_STORAGE_KEY)
+  localStorage.removeItem(USER_INFO_KEY)
 }
 
 let refreshPromise = null

@@ -8,6 +8,7 @@ export function Register({ mode = "register" }) {
   const isLogin = mode === "login"
 
   const [username, setUsername] = useState("")
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState("")
@@ -36,7 +37,7 @@ export function Register({ mode = "register" }) {
       if (isLogin) {
         await login({ username: username.trim(), password })
       } else {
-        await register({ username: username.trim(), password })
+        await register({ username: username.trim(), password, email: email.trim() })
       }
       navigate("/live", { replace: true })
     } catch (err) {
@@ -99,6 +100,21 @@ export function Register({ mode = "register" }) {
                 disabled={loading}
               />
             </div>
+
+            {!isLogin && (
+              <div style={styles.inputGroup}>
+                <label style={styles.label}>Email</label>
+                <input
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  style={styles.input}
+                  disabled={loading}
+                />
+              </div>
+            )}
 
             <div style={styles.inputGroup}>
               <label style={styles.label}>Password</label>

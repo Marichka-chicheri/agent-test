@@ -7,6 +7,20 @@ import { useAuth } from '../hooks/useAuth'
 import { useEventStream } from '../hooks/useEventStream'
 import { EventCard, ThinkingCard } from '../components/EventCard'
 
+const FILE_TYPES = [
+  { ext: 'txt',  label: 'Text (.txt)',    icon: '📄', accept: '.txt,text/plain' },
+  { ext: 'md',   label: 'Markdown (.md)', icon: '📝', accept: '.md,text/markdown,text/x-markdown' },
+  { ext: 'docx', label: 'Word (.docx)',   icon: '📘', accept: '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+  { ext: 'xlsx', label: 'Excel (.xlsx)',  icon: '📊', accept: '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+  { ext: 'pdf',  label: 'PDF (.pdf)',     icon: '📕', accept: '.pdf,application/pdf' },
+]
+
+function getFileIcon(filename) {
+  const ext = (filename.split('.').pop() || '').toLowerCase()
+  const ft = FILE_TYPES.find(f => f.ext === ext)
+  return ft ? ft.icon : '📎'
+}
+
 export function LiveView() {
   const navigate = useNavigate()
   const { apiKeys } = useAuth()
@@ -16,8 +30,14 @@ export function LiveView() {
   const [agentsLoading, setAgentsLoading] = useState(true)
   const [agentsError, setAgentsError] = useState('')
   const [activeAgent, setActiveAgent] = useState(null)
+  const [showUploadMenu, setShowUploadMenu] = useState(false)
+  const [uploadedFiles, setUploadedFiles] = useState([])
+  const [hoveredMenuItem, setHoveredMenuItem] = useState(null)
   const { events, status, step, error, run, reset } = useEventStream()
   const feedRef = useRef(null)
+  const fileInputRef = useRef(null)
+  const uploadMenuRef = useRef(null)
+
   useEffect(() => {
     let cancelled = false
 
@@ -51,8 +71,41 @@ export function LiveView() {
     }
   }, [events])
 
+  // Close upload menu on outside click
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (uploadMenuRef.current && !uploadMenuRef.current.contains(e.target)) {
+        setShowUploadMenu(false)
+      }
+    }
+    if (showUploadMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showUploadMenu])
+
+  function triggerFileInput(accept) {
+    setShowUploadMenu(false)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+      fileInputRef.current.accept = accept
+      fileInputRef.current.click()
+    }
+  }
+
+  function handleFileSelect(e) {
+    const files = Array.from(e.target.files)
+    if (files.length > 0) {
+      setUploadedFiles(prev => [...prev, ...files])
+    }
+  }
+
+  function removeFile(index) {
+    setUploadedFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
   function handleRun() {
-    if (!message.trim() || status === 'running' || !activeAgent) return
+    if ((!message.trim() && uploadedFiles.length === 0) || status === 'running' || !activeAgent) return
     setSentMessage(message)
     run(activeAgent.id, message)
     setMessage('')
@@ -70,6 +123,14 @@ export function LiveView() {
     setSentMessage('')
     reset()
   }
+
+  function handleReset() {
+    reset()
+    setSentMessage('')
+    setUploadedFiles([])
+  }
+
+  const canRun = (message.trim() || uploadedFiles.length > 0) && status !== 'running' && !!activeAgent
 
   return (
     <div style={styles.root}>
@@ -90,17 +151,16 @@ export function LiveView() {
           {status === 'error' && (
             <span style={styles.statusError}>Run failed</span>
           )}
-
           <ProfileMenu />
         </div>
       </div>
 
       {!apiKeys.gemini_configured && (
         <div style={styles.warnBanner}>
-          Add your Gemini API key in{" "}
-          <span style={styles.warnLink} onClick={() => navigate("/settings")}>
+          Add your Gemini API key in{' '}
+          <span style={styles.warnLink} onClick={() => navigate('/settings')}>
             Settings
-          </span>{" "}
+          </span>{' '}
           to run agents.
         </div>
       )}
@@ -181,39 +241,112 @@ export function LiveView() {
             )}
           </div>
 
-          {/* Input Area */}
-          <div style={styles.inputArea}>
-            <input
-              value={message}
-              onChange={e => setMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                activeAgent
-                  ? `Ask ${activeAgent.name} something...`
-                  : 'Select or create an agent...'
-              }
-              disabled={status === 'running' || !activeAgent}
-              style={{
-                ...styles.input,
-                opacity: status === 'running' ? 0.5 : 1,
-              }}
-            />
-            {status !== 'idle' && (
-              <button onClick={() => { reset(); setSentMessage('') }} style={styles.resetBtn}>New</button>
+          {/* Input wrapper */}
+          <div style={styles.inputWrapper}>
+
+            {/* File chips */}
+            {uploadedFiles.length > 0 && (
+              <div style={styles.fileChipsRow}>
+                {uploadedFiles.map((file, i) => (
+                  <div key={i} style={styles.fileChip}>
+                    <span style={{ fontSize: 13 }}>{getFileIcon(file.name)}</span>
+                    <span style={styles.chipName}>{file.name}</span>
+                    <span
+                      onClick={() => removeFile(i)}
+                      style={styles.chipRemove}
+                      title="Remove"
+                    >
+                      ×
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
-            <button
-              onClick={handleRun}
-              disabled={status === 'running' || !message.trim() || !activeAgent}
-              style={{
-                ...styles.runBtn,
-                background: status === 'running' || !message.trim() || !activeAgent
-                  ? 'rgba(255,255,255,0.1)'
-                  : 'rgba(255,255,255,0.25)',
-                cursor: status === 'running' || !message.trim() || !activeAgent ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {status === 'running' ? 'Running...' : 'Run'}
-            </button>
+
+            {/* Input row */}
+            <div style={styles.inputArea}>
+
+              {/* + Attach button */}
+              <div ref={uploadMenuRef} style={{ position: 'relative', flexShrink: 0 }}>
+                <button
+                  onClick={() => setShowUploadMenu(v => !v)}
+                  style={{
+                    ...styles.attachBtn,
+                    background: showUploadMenu
+                      ? 'rgba(255,255,255,0.25)'
+                      : 'rgba(255,255,255,0.12)',
+                  }}
+                  title="Attach file"
+                  disabled={status === 'running'}
+                >
+                  +
+                </button>
+
+                {showUploadMenu && (
+                  <div style={styles.uploadMenu}>
+                    <div style={styles.uploadMenuHeader}>Attach file</div>
+                    {FILE_TYPES.map(ft => (
+                      <div
+                        key={ft.ext}
+                        onClick={() => triggerFileInput(ft.accept)}
+                        onMouseEnter={() => setHoveredMenuItem(ft.ext)}
+                        onMouseLeave={() => setHoveredMenuItem(null)}
+                        style={{
+                          ...styles.uploadMenuItem,
+                          background: hoveredMenuItem === ft.ext
+                            ? 'rgba(255,255,255,0.12)'
+                            : 'transparent',
+                        }}
+                      >
+                        <span style={{ fontSize: 15 }}>{ft.icon}</span>
+                        <span>{ft.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                style={{ display: 'none' }}
+                onChange={handleFileSelect}
+              />
+
+              <input
+                value={message}
+                onChange={e => setMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  activeAgent
+                    ? `Ask ${activeAgent.name} something...`
+                    : 'Select or create an agent...'
+                }
+                disabled={status === 'running' || !activeAgent}
+                style={{
+                  ...styles.input,
+                  opacity: status === 'running' ? 0.5 : 1,
+                }}
+              />
+
+              {status !== 'idle' && (
+                <button onClick={handleReset} style={styles.resetBtn}>New</button>
+              )}
+
+              <button
+                onClick={handleRun}
+                disabled={!canRun}
+                style={{
+                  ...styles.runBtn,
+                  background: canRun ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.1)',
+                  cursor: canRun ? 'pointer' : 'not-allowed',
+                }}
+              >
+                {status === 'running' ? 'Running...' : 'Run'}
+              </button>
+
+            </div>
           </div>
 
         </div>
@@ -223,7 +356,6 @@ export function LiveView() {
 }
 
 const styles = {
-  // Копіюємо стилі з попередньої версії та додаємо нові для поп-апу
   root: {
     display: 'flex', flexDirection: 'column', height: '100vh',
     background: 'linear-gradient(160deg, #5ececa 0%, #3a9fbf 40%, #1a6080 100%)',
@@ -269,7 +401,8 @@ const styles = {
   body: { display: 'flex', flex: 1, gap: 10, overflow: 'hidden' },
   sidebar: {
     width: 180, flexShrink: 0, background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)',
-    borderRadius: 16, border: '1px solid rgba(255,255,255,0.15)', padding: 12, display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto',
+    borderRadius: 16, border: '1px solid rgba(255,255,255,0.15)', padding: 12,
+    display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto',
   },
   sidebarLabel: { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px', color: 'rgba(255,255,255,0.8)', paddingBottom: 4, borderBottom: '1px solid rgba(255,255,255,0.08)' },
   sidebarHint: { fontSize: 12, color: 'rgba(255,255,255,0.55)', padding: '4px 2px' },
@@ -280,13 +413,93 @@ const styles = {
   newAgentBtn: { marginTop: 'auto', padding: '8px 10px', background: 'rgba(255,255,255,0.06)', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: 10, fontSize: 12, color: 'rgba(255,255,255,0.5)', cursor: 'pointer', textAlign: 'center' },
   main: { flex: 1, display: 'flex', flexDirection: 'column', gap: 10, overflow: 'hidden' },
   feed: {
-    flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 8, background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)',
-    borderRadius: 16, border: '2px solid rgba(80,180,255,0.6)', boxShadow: '0 0 30px rgba(80,180,255,0.15), inset 0 1px 0 rgba(255,255,255,0.1)',
+    flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 8,
+    background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)',
+    borderRadius: 16, border: '2px solid rgba(80,180,255,0.6)',
+    boxShadow: '0 0 30px rgba(80,180,255,0.15), inset 0 1px 0 rgba(255,255,255,0.1)',
   },
   userBubble: { alignSelf: 'flex-end', background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '16px 16px 4px 16px', padding: '10px 14px', fontSize: 14, color: '#fff', maxWidth: '70%', wordBreak: 'break-word', backdropFilter: 'blur(8px)' },
   emptyState: { textAlign: 'center', marginTop: 60, color: 'rgba(255,255,255,0.5)', fontSize: 13 },
-  inputArea: { display: 'flex', gap: 8, padding: '10px 14px', background: 'rgba(0,0,0,0.15)', backdropFilter: 'blur(12px)', borderRadius: 14, border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 },
-  input: { flex: 1, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, padding: '9px 14px', color: '#fff', fontSize: 13, outline: 'none' },
-  resetBtn: { padding: '9px 14px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, color: '#fff', fontSize: 13, cursor: 'pointer' },
-  runBtn: { padding: '9px 18px', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 600 },
+  // Input wrapper (chips + row)
+  inputWrapper: {
+    display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0,
+  },
+  fileChipsRow: {
+    display: 'flex', flexWrap: 'wrap', gap: 6,
+    padding: '2px 4px',
+  },
+  fileChip: {
+    display: 'flex', alignItems: 'center', gap: 5,
+    background: 'rgba(255,255,255,0.15)',
+    border: '1px solid rgba(255,255,255,0.25)',
+    borderRadius: 20, padding: '4px 8px 4px 8px',
+    fontSize: 11, color: '#fff', maxWidth: 180,
+  },
+  chipName: {
+    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+    maxWidth: 110,
+  },
+  chipRemove: {
+    cursor: 'pointer', fontSize: 15, opacity: 0.7,
+    lineHeight: 1, marginLeft: 2, flexShrink: 0,
+  },
+  inputArea: {
+    display: 'flex', gap: 8, padding: '10px 14px',
+    background: 'rgba(0,0,0,0.15)', backdropFilter: 'blur(12px)',
+    borderRadius: 14, border: '1px solid rgba(255,255,255,0.1)',
+    alignItems: 'center',
+  },
+  // + Attach button
+  attachBtn: {
+    width: 34, height: 34, borderRadius: 10,
+    border: '1px solid rgba(255,255,255,0.2)',
+    color: '#fff', fontSize: 22, fontWeight: 300,
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    lineHeight: 1, padding: 0, flexShrink: 0,
+    transition: 'background 0.15s',
+  },
+  // Upload dropdown
+  uploadMenu: {
+    position: 'absolute',
+    bottom: 'calc(100% + 8px)',
+    left: 0,
+    background: 'rgba(15, 35, 55, 0.96)',
+    backdropFilter: 'blur(16px)',
+    border: '1px solid rgba(255,255,255,0.18)',
+    borderRadius: 12,
+    padding: 6,
+    minWidth: 185,
+    zIndex: 1000,
+    boxShadow: '0 8px 28px rgba(0,0,0,0.45)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  uploadMenuHeader: {
+    fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+    letterSpacing: '0.6px', color: 'rgba(255,255,255,0.4)',
+    padding: '4px 10px 6px',
+  },
+  uploadMenuItem: {
+    display: 'flex', alignItems: 'center', gap: 9,
+    padding: '8px 10px', borderRadius: 8,
+    fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.9)',
+    cursor: 'pointer',
+    transition: 'background 0.1s',
+  },
+  input: {
+    flex: 1, background: 'rgba(255,255,255,0.1)',
+    border: '1px solid rgba(255,255,255,0.15)',
+    borderRadius: 10, padding: '9px 14px',
+    color: '#fff', fontSize: 13, outline: 'none',
+  },
+  resetBtn: {
+    padding: '9px 14px', background: 'rgba(255,255,255,0.1)',
+    border: '1px solid rgba(255,255,255,0.15)',
+    borderRadius: 10, color: '#fff', fontSize: 13, cursor: 'pointer',
+  },
+  runBtn: {
+    padding: '9px 18px', border: '1px solid rgba(255,255,255,0.2)',
+    borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 600,
+  },
 }
