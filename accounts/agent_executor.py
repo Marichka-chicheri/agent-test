@@ -179,6 +179,7 @@ def execute_agent_run(run_id: int):
                 api_key=api_key,
                 model=gemini_model,
                 approval_allowlist=approval_allowlist,
+                allowed_tools=list(agent.tools) if agent.tools else None,
             )
 
         run.refresh_from_db()

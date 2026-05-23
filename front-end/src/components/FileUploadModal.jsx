@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { useDropzone } from "react-dropzone"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { fetchAppConfig, uploadFiles } from "../api/uploads"
 
 const FALLBACK_EXTENSIONS = [
@@ -18,6 +17,8 @@ export function FileUploadModal({ open, onClose, onFilesReady, disabled }) {
   const [pending, setPending] = useState([])
   const [uploadError, setUploadError] = useState("")
   const [uploadProgress, setUploadProgress] = useState(null)
+  const [dragActive, setDragActive] = useState(false)
+  const inputRef = useRef(null)
 
   useEffect(() => {
     if (!open) return
@@ -48,14 +49,7 @@ export function FileUploadModal({ open, onClose, onFilesReady, disabled }) {
   )
 
   const maxBytes = config?.max_upload_bytes || 10 * 1024 * 1024
-
-  const accept = useMemo(() => {
-    const map = {}
-    allowedExtensions.forEach((ext) => {
-      map[`.${ext}`] = []
-    })
-    return map
-  }, [allowedExtensions])
+  const acceptAttr = allowedExtensions.map((e) => `.${e}`).join(",")
 
   const validateFile = useCallback((file) => {
     const ext = extOf(file.name)
@@ -82,10 +76,6 @@ export function FileUploadModal({ open, onClose, onFilesReady, disabled }) {
         file,
         name: file.name,
         size: file.size,
-        status: "ready",
-        progress: 0,
-        server: null,
-        error: "",
       })
     })
     if (errors.length) setUploadError(errors.join(" "))
@@ -93,33 +83,37 @@ export function FileUploadModal({ open, onClose, onFilesReady, disabled }) {
     if (next.length) setPending((prev) => [...prev, ...next])
   }, [validateFile])
 
-  const onDrop = useCallback((accepted, rejected) => {
-    if (rejected?.length) {
-      const msgs = rejected.map((r) => {
-        const name = r.file?.name || "File"
-        const reason = r.errors?.[0]?.message || "rejected"
-        return `${name}: ${reason}`
-      })
-      setUploadError(msgs.join(" "))
-    }
-    if (accepted?.length) addFiles(accepted)
-  }, [addFiles])
+  function onDragOver(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!disabled && uploadProgress === null) setDragActive(true)
+  }
 
-  const { getRootProps, getInputProps, isDragActive, open: openPicker } = useDropzone({
-    onDrop,
-    accept,
-    multiple: true,
-    disabled: disabled || uploadProgress !== null,
-    noClick: true,
-    noKeyboard: true,
-  })
+  function onDragLeave(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(false)
+  }
+
+  function onDrop(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(false)
+    if (disabled || uploadProgress !== null) return
+    addFiles(Array.from(e.dataTransfer.files || []))
+  }
+
+  function onInputChange(e) {
+    addFiles(Array.from(e.target.files || []))
+    e.target.value = ""
+  }
 
   function removePending(id) {
     setPending((prev) => prev.filter((f) => f.id !== id))
   }
 
   async function handleConfirm() {
-    const ready = pending.filter((f) => f.status === "ready")
+    const ready = pending.filter((f) => f.file)
     if (!ready.length) {
       onClose()
       return
@@ -131,13 +125,9 @@ export function FileUploadModal({ open, onClose, onFilesReady, disabled }) {
     try {
       const result = await uploadFiles(
         ready.map((f) => f.file),
-        {
-          onProgress: setUploadProgress,
-        }
+        { onProgress: setUploadProgress }
       )
-
-      const uploaded = result?.files || []
-      onFilesReady(uploaded)
+      onFilesReady(result?.files || [])
       setPending([])
       setUploadProgress(null)
       onClose()
@@ -162,25 +152,34 @@ export function FileUploadModal({ open, onClose, onFilesReady, disabled }) {
         {configError && <div style={styles.warn}>{configError}</div>}
 
         <div
-          {...getRootProps()}
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          onDrop={onDrop}
           style={{
             ...styles.dropzone,
-            borderColor: isDragActive ? "rgba(120,220,255,0.9)" : "rgba(255,255,255,0.25)",
-            background: isDragActive ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.15)",
+            borderColor: dragActive ? "rgba(120,220,255,0.9)" : "rgba(255,255,255,0.25)",
+            background: dragActive ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.15)",
           }}
         >
-          <input {...getInputProps()} />
           <p style={styles.dropText}>
-            {isDragActive ? "Drop files here…" : "Drag and drop files here"}
+            {dragActive ? "Drop files here…" : "Drag and drop files here"}
           </p>
           <button
             type="button"
             style={styles.pickBtn}
-            onClick={openPicker}
+            onClick={() => inputRef.current?.click()}
             disabled={disabled || uploadProgress !== null}
           >
             Choose files
           </button>
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept={acceptAttr}
+            style={{ display: "none" }}
+            onChange={onInputChange}
+          />
           <p style={styles.hint}>
             {allowedExtensions.map((e) => `.${e}`).join(", ")} · max {(maxBytes / (1024 * 1024)).toFixed(0)} MB
           </p>
@@ -208,7 +207,6 @@ export function FileUploadModal({ open, onClose, onFilesReady, disabled }) {
                   style={styles.removeBtn}
                   onClick={() => removePending(item.id)}
                   disabled={uploadProgress !== null}
-                  aria-label={`Remove ${item.name}`}
                 >
                   Remove
                 </button>
@@ -258,22 +256,9 @@ const styles = {
   },
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   title: { margin: 0, fontSize: 18 },
-  closeBtn: {
-    background: "transparent",
-    border: "none",
-    color: "#fff",
-    fontSize: 24,
-    cursor: "pointer",
-    lineHeight: 1,
-  },
-  dropzone: {
-    border: "2px dashed rgba(255,255,255,0.25)",
-    borderRadius: 12,
-    padding: 24,
-    textAlign: "center",
-    marginBottom: 12,
-  },
-  dropText: { margin: "0 0 12px", fontSize: 14, opacity: 0.9 },
+  closeBtn: { background: "transparent", border: "none", color: "#fff", fontSize: 24, cursor: "pointer" },
+  dropzone: { border: "2px dashed rgba(255,255,255,0.25)", borderRadius: 12, padding: 24, textAlign: "center", marginBottom: 12 },
+  dropText: { margin: "0 0 12px", fontSize: 14 },
   pickBtn: {
     padding: "8px 16px",
     borderRadius: 8,
@@ -294,17 +279,8 @@ const styles = {
   },
   warn: { fontSize: 12, opacity: 0.75, marginBottom: 8 },
   progressWrap: { marginBottom: 12 },
-  progressBar: {
-    height: 6,
-    background: "rgba(255,255,255,0.15)",
-    borderRadius: 4,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    background: "#6ee7b7",
-    transition: "width 0.2s",
-  },
+  progressBar: { height: 6, background: "rgba(255,255,255,0.15)", borderRadius: 4, overflow: "hidden" },
+  progressFill: { height: "100%", background: "#6ee7b7", transition: "width 0.2s" },
   progressLabel: { fontSize: 12, opacity: 0.8, marginTop: 4, display: "block" },
   fileList: { listStyle: "none", margin: "0 0 16px", padding: 0, display: "flex", flexDirection: "column", gap: 6 },
   fileItem: {

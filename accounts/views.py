@@ -25,6 +25,7 @@ from .serializers import (
     RestAPIKeySerializer,
     RestAPIKeyCreateSerializer,
 )
+from .tool_utils import get_constructor_tools
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = PROJECT_ROOT / "src"
@@ -209,6 +210,12 @@ def rest_api_key_revoke(request, key_id):
         record.is_active = False
         record.save(update_fields=["is_active"])
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def tools_catalog(request):
+    return Response(get_constructor_tools())
 
 
 @api_view(["GET", "POST"])

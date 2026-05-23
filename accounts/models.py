@@ -66,9 +66,7 @@ class UserAPIKey(models.Model):
             return "not_configured"
         if self.github_token_valid is True:
             return "connected"
-        if self.github_token_valid is False:
-            return "invalid"
-        return "not_configured"
+        return "invalid"
 
     def add_approval_allow(self, tool_name: str) -> None:
         entry = (tool_name or "").strip()

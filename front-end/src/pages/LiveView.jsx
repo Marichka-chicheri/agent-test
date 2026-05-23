@@ -29,9 +29,9 @@ export function LiveView() {
   const [activeAgent, setActiveAgent] = useState(null)
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [attachments, setAttachments] = useState([])
+  const [pollTick, setPollTick] = useState(0)
   const { events, status, step, error, run, reset } = useEventStream(pollTick)
   const feedRef = useRef(null)
-  const [pollTick, setPollTick] = useState(0)
 
   useEffect(() => {
     let cancelled = false

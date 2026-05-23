@@ -1,6 +1,13 @@
 import { authFetch } from "./api"
 import { parseJsonResponse, withRetry } from "./http"
 
+export async function getAvailableTools() {
+  return withRetry(async () => {
+    const res = await authFetch("/tools/")
+    return parseJsonResponse(res)
+  })
+}
+
 export async function createAgent(data) {
   return withRetry(async () => {
     const res = await authFetch("/agents/", {
