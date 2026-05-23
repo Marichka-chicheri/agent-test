@@ -1,13 +1,20 @@
+import os
 from datetime import timedelta
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'hackathon-secret-key-change-later'
 
-DEBUG = True
+def _csv_env(name: str, default: str = "") -> list[str]:
+    raw = os.getenv(name, default)
+    return [item.strip() for item in raw.split(",") if item.strip()]
 
-ALLOWED_HOSTS = ['*']
+
+SECRET_KEY = os.getenv("SECRET_KEY", "hackathon-secret-key-change-later")
+
+DEBUG = os.getenv("DEBUG", "true").lower() in ("1", "true", "yes")
+
+ALLOWED_HOSTS = _csv_env("ALLOWED_HOSTS", "*") or ["*"]
 
 INSTALLED_APPS = [
     'django.contrib.admin',        # Додайте це
@@ -104,7 +111,12 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+# Comma-separated list; include your Vercel URL (no trailing slash).
+_DEFAULT_CORS = (
+    "http://localhost:5173,"
+    "http://127.0.0.1:5173,"
+    "https://agent-test-orcin.vercel.app"
+)
+CORS_ALLOWED_ORIGINS = _csv_env("CORS_ALLOWED_ORIGINS", _DEFAULT_CORS)
+
+CSRF_TRUSTED_ORIGINS = _csv_env("CSRF_TRUSTED_ORIGINS", ",".join(CORS_ALLOWED_ORIGINS))
