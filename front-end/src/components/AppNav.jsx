@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom"
 const links = [
   { to: "/live", label: "Live" },
   { to: "/constructor", label: "Create" },
-  { to: "/settings", label: "API Keys" },
+  { to: "/settings", label: "User data" },
 ]
 
 export function AppNav() {
