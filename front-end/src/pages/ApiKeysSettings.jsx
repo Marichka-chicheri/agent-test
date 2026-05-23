@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { logout } from "../api/api"
-import {
-  createRestApiKey,
-  fetchRestApiKeys,
-  revokeRestApiKey,
-} from "../api/restApiKeys"
+// import {
+//   createRestApiKey,
+//   fetchRestApiKeys,
+//   revokeRestApiKey,
+// } from "../api/restApiKeys"
 import { AppNav } from "../components/AppNav"
 import { useAuth } from "../hooks/useAuth"
 
@@ -202,66 +202,6 @@ export function ApiKeysSettings() {
         </form>
 
         <hr style={styles.divider} />
-
-        <h3 style={styles.sectionTitle}>REST API keys</h3>
-        <p style={styles.subtitle}>
-          Use these to call the API from scripts or CI without a browser session.
-          Send <code style={styles.code}>Authorization: Api-Key &lt;key&gt;</code> or{" "}
-          <code style={styles.code}>X-API-Key: &lt;key&gt;</code>.
-        </p>
-
-        {createdRestKey?.key && (
-          <div style={styles.keyReveal}>
-            <strong>Copy this key now — it will not be shown again.</strong>
-            <code style={styles.keyValue}>{createdRestKey.key}</code>
-          </div>
-        )}
-
-        {restKeys.length > 0 ? (
-          <ul style={styles.keyList}>
-            {restKeys.map((item) => (
-              <li key={item.id} style={styles.keyItem}>
-                <div>
-                  <strong>{item.name}</strong>
-                  <span style={styles.keyMeta}>
-                    {" "}
-                    · {item.prefix}… · {new Date(item.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  disabled={restLoading}
-                  onClick={() => handleRevokeRestKey(item.id)}
-                  style={styles.revokeBtn}
-                >
-                  Revoke
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p style={styles.hint}>No REST API keys yet.</p>
-        )}
-
-        <form onSubmit={handleCreateRestKey} style={styles.form}>
-          <label style={styles.label}>New key name</label>
-          <input
-            type="text"
-            value={restKeyName}
-            onChange={(e) => setRestKeyName(e.target.value)}
-            placeholder="e.g. CI pipeline"
-            style={styles.input}
-            disabled={restLoading || loadingMeta}
-          />
-          {restError && <div style={styles.error}>{restError}</div>}
-          <button
-            type="submit"
-            disabled={restLoading || loadingMeta || !restKeyName.trim()}
-            style={styles.primaryBtn}
-          >
-            {restLoading ? "Working…" : "Create REST API key"}
-          </button>
-        </form>
       </div>
     </div>
   )
