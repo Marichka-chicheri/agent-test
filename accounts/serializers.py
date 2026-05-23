@@ -2,6 +2,7 @@ from django.contrib.auth.models import User
 from rest_framework import serializers
 
 from .models import Agent, AgentRun, RestAPIKey
+from .tool_utils import validate_tools_list
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -63,6 +64,14 @@ class AgentSerializer(serializers.ModelSerializer):
         if value < 1 or value > 20:
             raise serializers.ValidationError("max_iterations must be between 1 and 20.")
         return value
+
+    def validate_tools(self, value):
+        if value is None:
+            return []
+        try:
+            return validate_tools_list(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
 
     def create(self, validated_data):
         validated_data.setdefault("tools", [])

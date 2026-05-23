@@ -6,7 +6,7 @@ import asyncio
 import inspect
 import os
 import time
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from dotenv import load_dotenv
 from google import genai
@@ -18,7 +18,8 @@ from approval_manager import (
     approval_manager,
 )
 from logger import add_step, create_run, finish_run, init_db
-from tools import TOOLS, TOOL_DECLARATIONS
+from tools import TOOLS
+from tools.registry import declarations_for_tools, resolve_allowed_tools
 
 load_dotenv()
 init_db()
@@ -159,6 +160,7 @@ def run_agent(
     max_iter: Optional[int] = None,
     api_key: Optional[str] = None,
     model: Optional[str] = None,
+    allowed_tools: Optional[List[str]] = None,
 ) -> str:
     """Run the Gemini agent loop; invoke on_step for each persisted step."""
     client = _get_client(api_key)
@@ -168,6 +170,11 @@ def run_agent(
 
     gemini_model = (model or DEFAULT_GEMINI_MODEL).strip()
     limit = max_iter if max_iter is not None else MAX_ITER
+    allowed_set = resolve_allowed_tools(allowed_tools)
+    tool_declarations = declarations_for_tools(allowed_set)
+
+    def _tool_allowed(tool_name: str) -> bool:
+        return allowed_set is None or tool_name in allowed_set
 
     run_id = create_run(prompt)
     agent_metrics.start_run(run_id)
@@ -182,7 +189,7 @@ def run_agent(
                 contents=history,
                 config=types.GenerateContentConfig(
                     system_instruction=instruction,
-                    tools=[types.Tool(function_declarations=TOOL_DECLARATIONS)],
+                    tools=[types.Tool(function_declarations=tool_declarations)],
                 ),
             )
 
@@ -208,13 +215,20 @@ def run_agent(
                         on_step,
                     )
 
-                    result = _execute_with_approval(
-                        run_id,
-                        tool_name,
-                        raw_args,
-                        args,
-                        on_step,
-                    )
+                    if not _tool_allowed(tool_name):
+                        result = {
+                            "error": (
+                                f"Tool '{tool_name}' is not enabled for this agent."
+                            )
+                        }
+                    else:
+                        result = _execute_with_approval(
+                            run_id,
+                            tool_name,
+                            raw_args,
+                            args,
+                            on_step,
+                        )
 
                     _record_step(
                         run_id,

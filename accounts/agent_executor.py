@@ -129,6 +129,7 @@ def execute_agent_run(run_id: int):
             max_iter=max_iter,
             api_key=api_key,
             model=gemini_model,
+            allowed_tools=list(agent.tools) if agent.tools else None,
         )
 
         run.refresh_from_db()

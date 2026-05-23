@@ -1,17 +1,9 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { createAgent } from "../api/agents"
+import { createAgent, getAvailableTools } from "../api/agents"
 import { AppNav } from "../components/AppNav"
 import { ProfileMenu } from "../components/ProfileMenu"
 import { useAuth } from "../hooks/useAuth"
-
-const AVAILABLE_TOOLS = [
-  { id: "web_search",       label: "Web Search",     desc: "Search the web for up-to-date info"},
-  { id: "http_request",     label: "HTTP Request",   desc: "Send GET / POST requests"},
-  { id: "run_python",       label: "Run Python",     desc: "Execute Python code snippets"},
-  { id: "read_email_inbox", label: "Read Email",     desc: "Read emails from IMAP inbox"},
-  { id: "read_document",    label: "Read Document",  desc: "Parse PDF, DOCX, XLSX, TXT…"},
-]
 
 const INITIAL_CONFIG = {
   name: "",
@@ -50,13 +42,40 @@ const CreateAgent = () => {
 
   const [config, setConfig] = useState(INITIAL_CONFIG)
   const [maxStepsInput, setMaxStepsInput] = useState("10")
+  const [availableTools, setAvailableTools] = useState([])
+  const [toolsLoading, setToolsLoading] = useState(true)
+  const [toolsError, setToolsError] = useState("")
   const [selectedTools, setSelectedTools] = useState(new Set())
   const [loading, setLoading] = useState(false)
   const [fieldErrors, setFieldErrors] = useState({})
   const [submitError, setSubmitError] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
 
-  const allSelected = selectedTools.size === AVAILABLE_TOOLS.length
+  useEffect(() => {
+    let cancelled = false
+    getAvailableTools()
+      .then((tools) => {
+        if (!cancelled) {
+          setAvailableTools(Array.isArray(tools) ? tools : [])
+          setToolsError("")
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setToolsError(err.message || "Failed to load tools")
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setToolsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const allSelected =
+    availableTools.length > 0 &&
+    selectedTools.size === availableTools.length
   const noneSelected = selectedTools.size === 0
 
   function toggleTool(id) {
@@ -71,7 +90,7 @@ const CreateAgent = () => {
     if (allSelected) {
       setSelectedTools(new Set())
     } else {
-      setSelectedTools(new Set(AVAILABLE_TOOLS.map(t => t.id)))
+      setSelectedTools(new Set(availableTools.map(t => t.id)))
     }
   }
 
@@ -291,8 +310,15 @@ const CreateAgent = () => {
               </button>
             </div>
 
+            {toolsError && (
+              <div style={styles.submitError}>{toolsError}</div>
+            )}
+            {toolsLoading && (
+              <span style={styles.hint}>Loading tools…</span>
+            )}
+
             <div style={styles.toolsGrid}>
-              {AVAILABLE_TOOLS.map(tool => {
+              {availableTools.map(tool => {
                 const checked = selectedTools.has(tool.id)
                 return (
                   <div
