@@ -1,0 +1,21 @@
+# Secrets and local config
+.env
+credentials.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# Django / local DB
+db.sqlite3
+runs.db
+
+# IDE
+.idea/
+
+# Node
+node_modules/
+front-end/dist/
