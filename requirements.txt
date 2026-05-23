@@ -11,3 +11,4 @@ python-dotenv==1.2.2
 gunicorn==26.0.0
 whitenoise==6.12.0
 django-cors-headers
+google-genai>=2.6.0
