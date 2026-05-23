@@ -1,12 +1,61 @@
-import { useState } from "react"
-import { authFetch, getUserInfo, setUserInfo } from "../api/api"
-import { parseJsonResponse } from "../api/http"
+import { useCallback, useEffect, useState } from "react"
+import { Link, useNavigate } from "react-router-dom"
+import { logout } from "../api/api"
+// import {
+//   createRestApiKey,
+//   fetchRestApiKeys,
+//   revokeRestApiKey,
+// } from "../api/restApiKeys"
+import { AppNav } from "../components/AppNav"
 import { useAuth } from "../hooks/useAuth"
 import { AppNav } from "../components/AppNav"
 import { ProfileMenu } from "../components/ProfileMenu"
 
 export function ApiKeysSettings() {
-  const { apiKeys, updateApiKeys } = useAuth()
+  const navigate = useNavigate()
+  const { apiKeys, loadApiKeys, updateGeminiKey } = useAuth()
+  const [geminiKey, setGeminiKey] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [loadingMeta, setLoadingMeta] = useState(true)
+  const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
+  const [restKeys, setRestKeys] = useState([])
+  const [restKeyName, setRestKeyName] = useState("")
+  const [restLoading, setRestLoading] = useState(false)
+  const [restError, setRestError] = useState("")
+  const [createdRestKey, setCreatedRestKey] = useState(null)
+
+  const loadRestKeys = useCallback(async () => {
+    const data = await fetchRestApiKeys()
+    setRestKeys(Array.isArray(data) ? data : [])
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function load() {
+      try {
+        setLoadingMeta(true)
+        await loadApiKeys()
+      } catch (err) {
+        if (!cancelled) setError(err.message || "Failed to load API keys")
+      } finally {
+        if (!cancelled) setLoadingMeta(false)
+      }
+    }
+
+    async function loadRest() {
+      try {
+        await loadRestKeys()
+      } catch (err) {
+        if (!cancelled) setRestError(err.message || "Failed to load REST API keys")
+      }
+    }
+
+    load()
+    loadRest()
+    return () => { cancelled = true }
+  }, [loadApiKeys, loadRestKeys])
 
   // ── User info (stored locally) ──────────────────────────────
   const stored = getUserInfo()
@@ -45,6 +94,49 @@ export function ApiKeysSettings() {
     } finally {
       setKeyLoading(false)
     }
+  }
+
+  async function handleCreateRestKey(e) {
+    e.preventDefault()
+    setRestError("")
+    setCreatedRestKey(null)
+
+    const name = restKeyName.trim()
+    if (!name) {
+      setRestError("Enter a name for the API key.")
+      return
+    }
+
+    try {
+      setRestLoading(true)
+      const created = await createRestApiKey(name)
+      setCreatedRestKey(created)
+      setRestKeyName("")
+      await loadRestKeys()
+    } catch (err) {
+      setRestError(err.message || "Failed to create REST API key")
+    } finally {
+      setRestLoading(false)
+    }
+  }
+
+  async function handleRevokeRestKey(keyId) {
+    setRestError("")
+    try {
+      setRestLoading(true)
+      await revokeRestApiKey(keyId)
+      if (createdRestKey?.id === keyId) setCreatedRestKey(null)
+      await loadRestKeys()
+    } catch (err) {
+      setRestError(err.message || "Failed to revoke API key")
+    } finally {
+      setRestLoading(false)
+    }
+  }
+
+  function handleLogout() {
+    logout()
+    navigate("/login", { replace: true })
   }
 
   return (
@@ -221,5 +313,61 @@ const styles = {
     marginTop: 12, padding: 13, borderRadius: 12, color: "#fff",
     fontSize: 15, fontWeight: 700, backdropFilter: "blur(8px)",
     border: "1px solid rgba(255,255,255,0.2)",
+  },
+  divider: {
+    border: "none",
+    borderTop: "1px solid rgba(255,255,255,.2)",
+    margin: "28px 0",
+  },
+  sectionTitle: { margin: "0 0 8px", fontSize: 18 },
+  code: {
+    fontFamily: "ui-monospace, monospace",
+    fontSize: 12,
+    background: "rgba(0,0,0,.2)",
+    padding: "2px 6px",
+    borderRadius: 4,
+  },
+  keyReveal: {
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 10,
+    background: "rgba(0,0,0,.25)",
+    fontSize: 13,
+    lineHeight: 1.5,
+  },
+  keyValue: {
+    display: "block",
+    marginTop: 8,
+    wordBreak: "break-all",
+    fontFamily: "ui-monospace, monospace",
+    fontSize: 12,
+  },
+  keyList: {
+    listStyle: "none",
+    margin: "0 0 16px",
+    padding: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  keyItem: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    padding: "10px 12px",
+    borderRadius: 10,
+    background: "rgba(0,0,0,.15)",
+    fontSize: 13,
+  },
+  keyMeta: { color: "rgba(255,255,255,0.65)", fontWeight: 400 },
+  revokeBtn: {
+    padding: "6px 10px",
+    borderRadius: 8,
+    border: "1px solid rgba(255,100,100,.4)",
+    background: "transparent",
+    color: "#ffb4b4",
+    cursor: "pointer",
+    flexShrink: 0,
   },
 }

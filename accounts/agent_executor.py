@@ -58,6 +58,20 @@ def map_step_to_frontend(step: dict) -> dict:
     if step_type == "max_steps_reached":
         return {"type": "max_steps_reached", "content": step.get("content", "Max steps reached")}
 
+    if step_type == "approval_pending":
+        return {
+            "type": "approval_pending",
+            "tool": step.get("tool", ""),
+            "approval_id": step.get("approval_id", ""),
+            "input": json.dumps(step.get("args") or {}, ensure_ascii=False),
+        }
+
+    if step_type == "metrics":
+        return {
+            "type": "metrics",
+            "content": json.dumps(step.get("metrics") or {}, ensure_ascii=False),
+        }
+
     return {"type": step_type or "thought", "content": str(step)}
 
 

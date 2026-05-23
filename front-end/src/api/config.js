@@ -1,2 +1,2 @@
 export const API_URL =
-  import.meta.env.VITE_API_URL ?? "http://localhost:8000/api"
+  import.meta.env.VITE_API_URL ?? "https://literal-agentic-studio.onrender.com/api"

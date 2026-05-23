@@ -60,6 +60,29 @@ class Agent(models.Model):
         return prompt
 
 
+class RestAPIKey(models.Model):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="rest_api_keys",
+    )
+    name = models.CharField(max_length=100)
+    prefix = models.CharField(max_length=16, db_index=True)
+    key_hash = models.CharField(max_length=64, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "is_active"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.prefix}…)"
+
+
 class AgentRun(models.Model):
     STATUS_RUNNING = "running"
     STATUS_DONE = "done"

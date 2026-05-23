@@ -1,35 +1,21 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# Secrets and local config
+.env
+credentials.json
 
-node_modules
-dist
-dist-ssr
-*.local
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.claude/
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# Databases
+# Django / local DB
 db.sqlite3
 runs.db
-*.sqlite3
-*.db
 
-# Python cache
-**/__pycache__/
-*.py[cod]
+# IDE
+.idea/
+
+# Node
+node_modules/
+front-end/dist/
