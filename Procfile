@@ -1,1 +1,1 @@
-web: gunicorn --workers=2 --bind=0.0.0.0:$PORT config.wsgi:application --log-file=- --log-level=debug
+web: gunicorn config.wsgi:application --bind=0.0.0.0:$PORT --log-file=- --log-level=debug
