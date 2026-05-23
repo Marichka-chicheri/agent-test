@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Agent, AgentRun, UserAPIKey
+from .models import Agent, AgentRun, RestAPIKey, UserAPIKey
 
 
 @admin.register(Agent)
@@ -13,6 +13,13 @@ class AgentAdmin(admin.ModelAdmin):
 class AgentRunAdmin(admin.ModelAdmin):
     list_display = ("id", "agent", "owner", "status", "created_at")
     list_filter = ("status",)
+
+
+@admin.register(RestAPIKey)
+class RestAPIKeyAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "prefix", "user", "is_active", "last_used_at", "created_at")
+    list_filter = ("is_active",)
+    search_fields = ("name", "prefix", "user__username")
 
 
 @admin.register(UserAPIKey)
